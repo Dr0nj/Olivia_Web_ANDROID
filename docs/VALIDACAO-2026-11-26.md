@@ -137,7 +137,15 @@ real visível.
   desligado, 0 envios e o popup fica para o usuário. Logs: `tarefa_completa`, `bonus_aceito`.
 - `q` continuou **16**.
 
-## 13. Pendências
+## 13. Anti-bot: resposta real (não só ensaio)
+
+Simulei a janela do servidor com `Red.recibir({t:"eresBot", id:"teste-olivia-...", seg:20, b:[Sí,No]})`.
+Resultado: `Olivia.sessao.snapshot().antiBot` = 1, `janelas` = 1, log `antibot_resposta`,
+`EresBot.esperando` = true e a janela sumiu (0 botões). O caminho é o do botão do jogo:
+`EresBot.tocar("2")` → `{t:"chat", canal:"local", texto:"/ebr <id> 2"}`. Ou seja, o
+“Responder «Não»” funciona de verdade, não só no ensaio.
+
+## 14. Pendências
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).

@@ -146,7 +146,9 @@ diálogo pela função interna e envia `{t:"tarea", id, accion:...}` — sem cli
 O popup de **missão bônus** também é aceito sozinho (`{t:"bonus", accion:"aceptar", id}`) e
 o log mostra `bonus_aceito`. Com o automático desligado, os dois popups ficam para você.
 
-## 5. Anti-bot em ensaio (2 min)
+## 5. Anti-bot em ensaio (2 min) — e o teste real
+
+Ensaio (não envia):
 
 Sem esperar o servidor perguntar:
 
@@ -160,6 +162,22 @@ Esperado em ~1 s: evento `antibot_ensaio` no **log** do painel e no console
 (`[Olivia] ensaio: responderia id=teste-1 chave=2`).
 
 Para valer de novo: `Olivia.antibot.definirEnsaio(false)`.
+
+**Teste real (mesmo caminho do botão “No”)**
+
+Simule uma janela do servidor e veja a resposta sair de verdade:
+
+```js
+Red.recibir({ t: "eresBot", id: "teste-olivia-1", seg: 20,
+  b: [{ tx: "Sí", k: "1" }, { tx: "No", k: "2" }] });
+```
+
+Esperado em 0,7–1,6 s:
+
+- o Olivia chama o próprio `EresBot.tocar("2")` → envia `{t:"chat", canal:"local", texto:"/ebr teste-olivia-1 2"}`;
+- `Olivia.sessao.snapshot().antiBot` sobe 1 e `janelas` sobe 1;
+- log `antibot_resposta` com `id` e `chave=2`;
+- a janela some (sem botões).
 
 Teste real: deixe rodando até aparecer a janela; o painel deve mostrar
 `desafio 1/1` (respondidas/janelas) sem você tocar em nada.

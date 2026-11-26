@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.6.1
+// @version      0.6.2
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1611,7 +1611,10 @@ function criarPainel(opcoes) {
       try { return localStorage.getItem("ovw.ensaio") === "1"; } catch (e) { return false; }
     })(),
     aoVer: function () { motor.sessao.janelaVista(); },
-    aoResponder: function () { motor.sessao.antiBotRespondida(); },
+    aoResponder: function (id, chave) {
+      motor.sessao.antiBotRespondida();
+      registro.evento("antibot_resposta", { id: String(id), chave: String(chave) });
+    },
     aoEnsaio: function (id, chave) {
       registro.evento("antibot_ensaio", { id: String(id), chave: String(chave) });
       console.info("[Olivia] ensaio: responderia id=" + id + " chave=" + chave);

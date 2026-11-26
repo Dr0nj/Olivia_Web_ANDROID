@@ -62,7 +62,10 @@ import { criarPainel } from "./painel.js";
       try { return localStorage.getItem("ovw.ensaio") === "1"; } catch (e) { return false; }
     })(),
     aoVer: function () { motor.sessao.janelaVista(); },
-    aoResponder: function () { motor.sessao.antiBotRespondida(); },
+    aoResponder: function (id, chave) {
+      motor.sessao.antiBotRespondida();
+      registro.evento("antibot_resposta", { id: String(id), chave: String(chave) });
+    },
     aoEnsaio: function (id, chave) {
       registro.evento("antibot_ensaio", { id: String(id), chave: String(chave) });
       console.info("[Olivia] ensaio: responderia id=" + id + " chave=" + chave);

@@ -76,6 +76,7 @@ export function criarMotor(opcoes) {
   function iniciarRota(pontos, origem, opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
+    rota.definirAtraso(opcoes ? opcoes.atraso : null);
     const st = cfg.ponte.estado ? cfg.ponte.estado() : null;
     const pos = st && st.pos ? st.pos : null;
     if (!rota.iniciar(cfg.agora(), pos)) return 0;
@@ -94,6 +95,7 @@ export function criarMotor(opcoes) {
       indice: rota.indice(),
       proximo: alvo ? alvo.x + "," + alvo.y : "",
       maisProximo: !(opcoes && Number.isInteger(opcoes.indice)),
+      atraso: rota.atrasoConfig(),
       pontos: rota.pontos().map((p) => p.x + "," + p.y).join(";"),
     });
     return total;
@@ -283,7 +285,7 @@ export function criarMotor(opcoes) {
     parar,
     modo: () => modo,
     pausadoAte: () => pausadoAte,
-    pausaRestante: () => Math.max(0, pausadoAte - cfg.agora()),
+    pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
     ultimoMotivo: () => ultimoMotivoParada,
     rota,
     seguidor,

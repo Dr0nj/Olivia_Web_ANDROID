@@ -23,6 +23,9 @@ export function criarRota(opcoes) {
     repetir: false,
     voltasMax: 0, // 0 = sem limite
     // Sem caminho: espera e tenta de novo (desktop: 5 s x 12).
+    // Pausa depois de cada waypoint (porta do WaypointPauseSettings do desktop).
+    atraso: { modo: "off", ms: 0, minMs: 0, maxMs: 0 },
+    aleatorio: Math.random,
     esperaMs: 5000,
     esperasMax: 12,
   }, opcoes || {});
@@ -40,6 +43,36 @@ export function criarRota(opcoes) {
   let esperas = 0;
   let ultimaPos = null;
   let paradoDesde = 0;
+  let atraso = { modo: "off", ms: 0, minMs: 0, maxMs: 0 };
+
+  function definirAtraso(c) {
+    if (!c || c.modo === "off" || c.ligado === false) {
+      atraso = { modo: "off", ms: 0, minMs: 0, maxMs: 0 };
+      return atraso;
+    }
+    const modo = c.modo === "aleatorio" ? "aleatorio" : "exato";
+    const ms = Math.max(0, Math.round(Number(c.ms) || 0));
+    const minMs = Math.max(0, Math.round(Number(c.minMs != null ? c.minMs : ms) || 0));
+    const maxMs = Math.max(minMs, Math.round(Number(c.maxMs != null ? c.maxMs : minMs) || 0));
+    atraso = {
+      modo: modo,
+      ms: ms,
+      minMs: minMs,
+      maxMs: maxMs,
+    };
+    return atraso;
+  }
+
+  // Quanto esperar depois deste waypoint. O `pausaMs` do ponto vence a config global.
+  function atrasoDe(ponto) {
+    if (ponto && Number.isFinite(ponto.pausaMs) && ponto.pausaMs > 0) return ponto.pausaMs;
+    if (atraso.modo === "off") return 0;
+    if (atraso.modo === "aleatorio") {
+      const r = Math.min(0.999999, Math.max(0, Number(cfg.aleatorio()) || 0));
+      return Math.round(atraso.minMs + r * (atraso.maxMs - atraso.minMs));
+    }
+    return atraso.ms;
+  }
 
   function cheb(a, b) {
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -176,7 +209,6 @@ export function criarRota(opcoes) {
     const alvo = pontos[indice] || { x: 0, y: 0 };
     pulados.add(indice);
     tentativas = 0;
-    ultimaPos = null;
     if (proximoNaoPulado()) {
       desde = agora;
       limite = null;
@@ -211,6 +243,11 @@ export function criarRota(opcoes) {
     return { acao: "volta", volta: volta, total: pontos.length };
   }
 
+  // Quanto falta da espera por falta de caminho (ms).
+  function esperaRestante(agora) {
+    return situacao === "esperando" ? Math.max(0, pausaAte - agora) : 0;
+  }
+
   // Decisão do tick: ir | repetir | pular | sem_caminho | esperar | avancar | volta | concluir | desistir
   function passo(entrada) {
     const agora = entrada.agora;
@@ -219,30 +256,40 @@ export function criarRota(opcoes) {
     if (situacao === "esperando") {
       if (agora < pausaAte) return { acao: "esperar", motivo: "sem-caminho" };
       situacao = "andando";
+      pausaAte = 0;
       desde = agora;
       limite = null;
       return { acao: "esperar", motivo: "recomeco" };
     }
 
     if (situacao !== "andando") return null;
-    if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
+    if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
+    if (pausaAte !== 0) {
+      if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
+      // Pausa terminou: o prazo da próxima perna começa agora.
+      pausaAte = 0;
+      desde = agora;
+      limite = null;
+    }
     if (finalizando) {
       finalizando = false;
       return fecharVolta(agora);
     }
-    if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
 
     const alvo = pontos[indice];
     if (limite === null) limite = prazoDe(pos, alvo);
 
-    const exato = pos.x === alvo.x && pos.y === alvo.y;
-    let parado = false;
-    if (!ultimaPos || ultimaPos.x !== pos.x || ultimaPos.y !== pos.y) {
-      ultimaPos = { x: pos.x, y: pos.y };
+    const mudou = !ultimaPos || ultimaPos.x !== pos.x || ultimaPos.y !== pos.y;
+    if (mudou) {
       paradoDesde = agora;
-    } else {
-      parado = agora - paradoDesde >= cfg.settleMs;
+      ultimaPos = { x: pos.x, y: pos.y };
+      // Progresso renova o prazo da perna: só conta travamento de verdade.
+      desde = agora;
+      limite = prazoDe(pos, alvo);
     }
+    const parado = !mudou && agora - paradoDesde >= cfg.settleMs;
+
+    const exato = pos.x === alvo.x && pos.y === alvo.y;
     const perto = !exato && cheb(pos, alvo) <= cfg.raioChegada && parado;
 
     if (exato || perto) {
@@ -251,7 +298,8 @@ export function criarRota(opcoes) {
       desde = agora;
       limite = null;
       ultimaPos = null;
-      if (alvo.pausaMs > 0) pausaAte = agora + alvo.pausaMs;
+      const espera = atrasoDe(alvo);
+      if (espera > 0) pausaAte = agora + espera;
 
       if (indice >= pontos.length) {
         if (agora < pausaAte) {
@@ -260,7 +308,7 @@ export function criarRota(opcoes) {
         }
         return fecharVolta(agora);
       }
-      if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
+      // A pausa configurada é aplicada no próximo tick (o ponto já conta como concluído).
       return { acao: "avancar", indice: indice, alvo: pontos[indice], perto: perto, pos: pos };
     }
 
@@ -286,6 +334,8 @@ export function criarRota(opcoes) {
     passo,
     posicionar,
     pularAtual,
+    definirAtraso,
+    atrasoConfig: () => Object.assign({}, atraso),
     repetir,
     definirVolta,
     pontos: () => pontos.map((p) => ({ x: p.x, y: p.y, pausaMs: p.pausaMs })),
@@ -295,6 +345,7 @@ export function criarRota(opcoes) {
     volta: () => volta,
     pulados: () => Array.from(pulados),
     esperas: () => esperas,
+    esperaRestante,
     alvo: () => (pontos[indice] ? { x: pontos[indice].x, y: pontos[indice].y } : null),
   };
 }

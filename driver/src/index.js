@@ -82,6 +82,7 @@ import { criarPainel } from "./painel.js";
       indice: motor.rota.indice(),
       volta: motor.rota.volta(),
       repetir: motor.rota.repetir(),
+      atraso: motor.rota.atrasoConfig ? motor.rota.atrasoConfig() : null,
       personagem: motor.sessao.snapshot().personagem,
       piso: st.pos && Number.isInteger(st.pos.z) ? st.pos.z : null,
       em: Date.now(),
@@ -150,6 +151,7 @@ import { criarPainel } from "./painel.js";
 
     motor.iniciarRota(guardado.pontos, "retomada", {
       repetir: !!guardado.repetir,
+      atraso: guardado.atraso || null,
       indice: Number.isInteger(guardado.indice) ? guardado.indice : 0,
       volta: Number.isInteger(guardado.volta) ? guardado.volta : 0,
     });
@@ -180,6 +182,7 @@ import { criarPainel } from "./painel.js";
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
       coleta: motor.tarefas ? motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null) : null,
+      tarefaCompleta: { repetir: repetirTask },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -191,10 +194,33 @@ import { criarPainel } from "./painel.js";
 
   let assinado = false;
   let ligado = false;
+  let assinadoTarefa = false;
+  let repetirTask = (function () {
+    try { return localStorage.getItem("ovw.repetirTask") !== "0"; } catch (e) { return true; }
+  })();
+
+  // Popup "Tarefa completa" do cliente: escolhe Repetir/Terminar, fecha o diálogo e envia
+  // o mesmo pacote do botão oficial (sem click sintético, que acenderia o bit 32).
+  function aoTarefaCompleta(m) {
+    if (!m || !m.id) return;
+    try {
+      const dialogos = document.querySelectorAll("#hud .lo-dlg");
+      const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
+      if (ultimo && typeof ultimo._cerrar === "function") ultimo._cerrar();
+    } catch (e) {
+      // sem diálogo aberto: segue com o envio
+    }
+    const accion = repetirTask ? "repetir" : "terminar";
+    ponte.enviar({ t: "tarea", id: Number(m.id), accion: accion });
+    registro.evento("tarefa_completa", { id: m.id, accion: accion });
+  }
 
   function subir() {
     if (!ponte.pronto()) return false;
     if (!assinado) assinado = antibot.assinar();
+    if (!assinadoTarefa) {
+      assinadoTarefa = ponte.aoReceber("tareaRepetir", aoTarefaCompleta);
+    }
     if (!ligado) { motor.iniciar(); ligado = true; }
     return assinado && ligado;
   }
@@ -253,6 +279,13 @@ import { criarPainel } from "./painel.js";
       ligado: function () { return motor.tarefas.ligado(); },
       definir: function (v) { motor.tarefas.definirLigado(v); },
       estado: function () { return motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null); },
+    },
+    repetirTask: {
+      ligado: function () { return repetirTask; },
+      definir: function (v) {
+        repetirTask = !!v;
+        try { localStorage.setItem("ovw.repetirTask", repetirTask ? "1" : "0"); } catch (e) { /* sem storage */ }
+      },
     },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },

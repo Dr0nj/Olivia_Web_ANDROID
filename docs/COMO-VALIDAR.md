@@ -103,6 +103,13 @@ waypoint e `voltas` a cada laço.
 - Se o personagem **mudar de piso** no meio, para (`rota_piso_mudou`) — `ir` não sobe escada.
 - Volta concluída limpa os pulados e tenta todos de novo.
 
+**Atraso entre waypoints**
+
+- **Atraso…** (na tela de rota) → **Ativar atraso** → escolha **Aleatório** ou deixe exato.
+- No modo exato vale o campo **de**; no aleatório, sorteia entre **de** e **até** (0 a 60 s).
+- O `pausaMs` do ponto (ex.: `{"x":10,"y":10,"pausaMs":5000}`) vence a config global.
+- O resumo aparece ao lado do botão: `1,5 s fixo` ou `1,0–3,0 s`.
+
 Medir o `q` no fim (não em laço, cada chamada consome `f`/`w`):
 
 ```js
@@ -126,6 +133,13 @@ O painel tem **Coletar prêmios** (ligado por padrão) e a linha `N prontos · M
 Para conferir: complete uma tarefa/missão, deixe parado e veja o ouro/exp subir e o
 contador `coletados` aumentar. **Aceitar** missão nova continua sendo falar com o NPC
 (a oferta vem no diálogo dele); o Olivia só coleta o que já está concluído.
+
+**Popup “Tarefa completa” (Repetir/Terminar)**
+
+Quando o cliente abre o popup, o Olivia escolhe pelo checkbox **Repetir task completa**
+(marcado = `repetir`, desmarcado = `terminar`), fecha o diálogo pela função interna e envia
+`{t:"tarea", id, accion:...}` — sem clique sintético (não acende o bit 32). O log mostra
+`tarefa_completa` com o id e a ação.
 
 ## 5. Anti-bot em ensaio (2 min)
 

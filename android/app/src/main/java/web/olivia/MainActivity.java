@@ -56,8 +56,8 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         painel = new Painel(this, new Painel.Acoes() {
-            @Override public void iniciarRota(String json, boolean repetir) {
-                chamarJs("Olivia.rota(" + json + ", { repetir: " + repetir + ", origem: 'painel' })");
+            @Override public void iniciarRota(String json, boolean repetir, String atraso) {
+                chamarJs("Olivia.rota(" + json + ", { repetir: " + repetir + ", origem: 'painel', atraso: " + atraso + " })");
             }
             @Override public void definirRepetir(boolean repetir) {
                 chamarJs("Olivia.motor.rota.repetir(" + repetir + ")");
@@ -66,6 +66,7 @@ public class MainActivity extends Activity {
             @Override public void seguir(long id) { chamarJs("Olivia.seguir(" + id + ")"); }
             @Override public void ligarAntiBot(boolean ligado) { chamarJs("Olivia.antibot.definirLigado(" + ligado + ")"); }
             @Override public void ligarColeta(boolean ligado) { chamarJs("Olivia.coletar.definir(" + ligado + ")"); }
+            @Override public void ligarRepetirTask(boolean ligado) { chamarJs("Olivia.repetirTask.definir(" + ligado + ")"); }
             @Override public void zerar() { chamarJs("Olivia.zerar()"); }
             @Override public void recarregar() { web.reload(); }
             @Override public void listarJogadores(final Painel.RetornoLista retorno) {

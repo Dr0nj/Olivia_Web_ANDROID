@@ -123,7 +123,8 @@ test("perna longa ganha prazo proporcional à distância", () => {
   rota.iniciar(0);
   rota.passo({ pos: { x: 0, y: 0 }, agora: 0 });
   assert.equal(rota.passo({ pos: { x: 15, y: 15 }, agora: 5000 }).acao, "ir");
-  assert.equal(rota.passo({ pos: { x: 25, y: 25 }, agora: 9500 }).acao, "repetir");
+  // Sem progresso desde 5000: 15 tiles * 300 ms = 4500 ms de prazo.
+  assert.equal(rota.passo({ pos: { x: 15, y: 15 }, agora: 9600 }).acao, "repetir");
 });
 
 test("perna longa tem teto de prazo", () => {
@@ -143,6 +144,64 @@ test("volta concluída limpa os pontos pulados", () => {
   assert.deepEqual(rota.pulados(), [0]);
   assert.equal(rota.passo({ pos: { x: 6, y: 5 }, agora: 3100 }).acao, "volta");
   assert.deepEqual(rota.pulados(), []);
+});
+
+test("progresso renova o prazo da perna", () => {
+  const rota = criarRota({ timeoutMs: 2500, msPorTile: 350 });
+  rota.carregar([[30, 0]]);
+  rota.iniciar(0);
+  rota.passo({ pos: { x: 0, y: 0 }, agora: 0 });
+
+  // Anda 2 tiles a cada 2 s: nunca pode contar como travamento.
+  for (let i = 1; i <= 6; i += 1) {
+    const d = rota.passo({ pos: { x: i * 2, y: 0 }, agora: i * 2000 });
+    assert.notEqual(d.acao, "repetir", "renovou errado no passo " + i);
+    assert.notEqual(d.acao, "pular");
+  }
+});
+
+test("atraso exato espera depois de cada waypoint", () => {
+  const rota = criarRota();
+  rota.definirAtraso({ modo: "exato", ms: 1000 });
+  rota.carregar([[1, 1], [2, 1]]);
+  rota.iniciar(0);
+
+  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 100 }).acao, "avancar");
+  assert.deepEqual(rota.passo({ pos: { x: 1, y: 1 }, agora: 500 }), { acao: "esperar", motivo: "pausa" });
+  const d = rota.passo({ pos: { x: 1, y: 1 }, agora: 1200 });
+  assert.equal(d.acao, "ir");
+  assert.equal(d.x, 2);
+});
+
+test("atraso aleatório usa o intervalo configurado", () => {
+  const rota = criarRota({ aleatorio: () => 0.5 });
+  rota.definirAtraso({ modo: "aleatorio", minMs: 1000, maxMs: 3000 });
+  rota.carregar([[1, 1], [2, 1]]);
+  rota.iniciar(0);
+
+  rota.passo({ pos: { x: 1, y: 1 }, agora: 1000 });
+  assert.deepEqual(rota.passo({ pos: { x: 1, y: 1 }, agora: 2500 }), { acao: "esperar", motivo: "pausa" });
+  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 3100 }).acao, "ir");
+});
+
+test("pausaMs do ponto vence o atraso global", () => {
+  const rota = criarRota();
+  rota.definirAtraso({ modo: "exato", ms: 5000 });
+  rota.carregar([{ x: 1, y: 1, pausaMs: 1000 }]);
+  rota.iniciar(0);
+
+  rota.passo({ pos: { x: 1, y: 1 }, agora: 0 });
+  assert.deepEqual(rota.passo({ pos: { x: 1, y: 1 }, agora: 900 }), { acao: "esperar", motivo: "pausa" });
+  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 1100 }).acao, "concluir");
+});
+
+test("atraso desligado não espera", () => {
+  const rota = criarRota();
+  rota.definirAtraso({ modo: "off" });
+  rota.carregar([[1, 1], [2, 1]]);
+  rota.iniciar(0);
+  rota.passo({ pos: { x: 1, y: 1 }, agora: 100 });
+  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 200 }).acao, "ir");
 });
 
 test("posicionar retoma a rota de um índice", () => {

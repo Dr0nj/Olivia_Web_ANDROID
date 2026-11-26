@@ -166,6 +166,21 @@ test("executa rota ponto a ponto e conclui", () => {
   assert.ok(enviados.some((m) => m.t === "parar"), "não mandou parar ao concluir");
 });
 
+test("fecha o popup de task completa e envia repetir ou terminar", () => {
+  const { janela, Red, enviados } = cenario();
+
+  Red.emitir("tareaRepetir", { id: 77, titulo: "Task complete", texto: "Rats" });
+  const repetir = enviados.find((m) => m.t === "tarea" && m.id === 77);
+  assert.ok(repetir, "não enviou a ação da task: " + JSON.stringify(enviados));
+  assert.equal(repetir.accion, "repetir");
+
+  janela.Olivia.repetirTask.definir(false);
+  Red.emitir("tareaRepetir", { id: 78, titulo: "Task complete" });
+  const fim = enviados.find((m) => m.t === "tarea" && m.id === 78);
+  assert.ok(fim);
+  assert.equal(fim.accion, "terminar");
+});
+
 test("não embrulha API nenhuma do cliente", () => {
   const { janela, Red, antes } = cenario();
   assert.equal(Red.enviar, antes.enviar);

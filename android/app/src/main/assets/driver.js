@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.5.0
+// @version      0.6.0
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -188,6 +188,9 @@ function criarRota(opcoes) {
     repetir: false,
     voltasMax: 0, // 0 = sem limite
     // Sem caminho: espera e tenta de novo (desktop: 5 s x 12).
+    // Pausa depois de cada waypoint (porta do WaypointPauseSettings do desktop).
+    atraso: { modo: "off", ms: 0, minMs: 0, maxMs: 0 },
+    aleatorio: Math.random,
     esperaMs: 5000,
     esperasMax: 12,
   }, opcoes || {});
@@ -205,6 +208,36 @@ function criarRota(opcoes) {
   let esperas = 0;
   let ultimaPos = null;
   let paradoDesde = 0;
+  let atraso = { modo: "off", ms: 0, minMs: 0, maxMs: 0 };
+
+  function definirAtraso(c) {
+    if (!c || c.modo === "off" || c.ligado === false) {
+      atraso = { modo: "off", ms: 0, minMs: 0, maxMs: 0 };
+      return atraso;
+    }
+    const modo = c.modo === "aleatorio" ? "aleatorio" : "exato";
+    const ms = Math.max(0, Math.round(Number(c.ms) || 0));
+    const minMs = Math.max(0, Math.round(Number(c.minMs != null ? c.minMs : ms) || 0));
+    const maxMs = Math.max(minMs, Math.round(Number(c.maxMs != null ? c.maxMs : minMs) || 0));
+    atraso = {
+      modo: modo,
+      ms: ms,
+      minMs: minMs,
+      maxMs: maxMs,
+    };
+    return atraso;
+  }
+
+  // Quanto esperar depois deste waypoint. O `pausaMs` do ponto vence a config global.
+  function atrasoDe(ponto) {
+    if (ponto && Number.isFinite(ponto.pausaMs) && ponto.pausaMs > 0) return ponto.pausaMs;
+    if (atraso.modo === "off") return 0;
+    if (atraso.modo === "aleatorio") {
+      const r = Math.min(0.999999, Math.max(0, Number(cfg.aleatorio()) || 0));
+      return Math.round(atraso.minMs + r * (atraso.maxMs - atraso.minMs));
+    }
+    return atraso.ms;
+  }
 
   function cheb(a, b) {
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -341,7 +374,6 @@ function criarRota(opcoes) {
     const alvo = pontos[indice] || { x: 0, y: 0 };
     pulados.add(indice);
     tentativas = 0;
-    ultimaPos = null;
     if (proximoNaoPulado()) {
       desde = agora;
       limite = null;
@@ -376,6 +408,11 @@ function criarRota(opcoes) {
     return { acao: "volta", volta: volta, total: pontos.length };
   }
 
+  // Quanto falta da espera por falta de caminho (ms).
+  function esperaRestante(agora) {
+    return situacao === "esperando" ? Math.max(0, pausaAte - agora) : 0;
+  }
+
   // Decisão do tick: ir | repetir | pular | sem_caminho | esperar | avancar | volta | concluir | desistir
   function passo(entrada) {
     const agora = entrada.agora;
@@ -384,30 +421,40 @@ function criarRota(opcoes) {
     if (situacao === "esperando") {
       if (agora < pausaAte) return { acao: "esperar", motivo: "sem-caminho" };
       situacao = "andando";
+      pausaAte = 0;
       desde = agora;
       limite = null;
       return { acao: "esperar", motivo: "recomeco" };
     }
 
     if (situacao !== "andando") return null;
-    if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
+    if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
+    if (pausaAte !== 0) {
+      if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
+      // Pausa terminou: o prazo da próxima perna começa agora.
+      pausaAte = 0;
+      desde = agora;
+      limite = null;
+    }
     if (finalizando) {
       finalizando = false;
       return fecharVolta(agora);
     }
-    if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
 
     const alvo = pontos[indice];
     if (limite === null) limite = prazoDe(pos, alvo);
 
-    const exato = pos.x === alvo.x && pos.y === alvo.y;
-    let parado = false;
-    if (!ultimaPos || ultimaPos.x !== pos.x || ultimaPos.y !== pos.y) {
-      ultimaPos = { x: pos.x, y: pos.y };
+    const mudou = !ultimaPos || ultimaPos.x !== pos.x || ultimaPos.y !== pos.y;
+    if (mudou) {
       paradoDesde = agora;
-    } else {
-      parado = agora - paradoDesde >= cfg.settleMs;
+      ultimaPos = { x: pos.x, y: pos.y };
+      // Progresso renova o prazo da perna: só conta travamento de verdade.
+      desde = agora;
+      limite = prazoDe(pos, alvo);
     }
+    const parado = !mudou && agora - paradoDesde >= cfg.settleMs;
+
+    const exato = pos.x === alvo.x && pos.y === alvo.y;
     const perto = !exato && cheb(pos, alvo) <= cfg.raioChegada && parado;
 
     if (exato || perto) {
@@ -416,7 +463,8 @@ function criarRota(opcoes) {
       desde = agora;
       limite = null;
       ultimaPos = null;
-      if (alvo.pausaMs > 0) pausaAte = agora + alvo.pausaMs;
+      const espera = atrasoDe(alvo);
+      if (espera > 0) pausaAte = agora + espera;
 
       if (indice >= pontos.length) {
         if (agora < pausaAte) {
@@ -425,7 +473,7 @@ function criarRota(opcoes) {
         }
         return fecharVolta(agora);
       }
-      if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
+      // A pausa configurada é aplicada no próximo tick (o ponto já conta como concluído).
       return { acao: "avancar", indice: indice, alvo: pontos[indice], perto: perto, pos: pos };
     }
 
@@ -451,6 +499,8 @@ function criarRota(opcoes) {
     passo,
     posicionar,
     pularAtual,
+    definirAtraso,
+    atrasoConfig: () => Object.assign({}, atraso),
     repetir,
     definirVolta,
     pontos: () => pontos.map((p) => ({ x: p.x, y: p.y, pausaMs: p.pausaMs })),
@@ -460,6 +510,7 @@ function criarRota(opcoes) {
     volta: () => volta,
     pulados: () => Array.from(pulados),
     esperas: () => esperas,
+    esperaRestante,
     alvo: () => (pontos[indice] ? { x: pontos[indice].x, y: pontos[indice].y } : null),
   };
 }
@@ -1052,6 +1103,7 @@ function criarMotor(opcoes) {
   function iniciarRota(pontos, origem, opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
+    rota.definirAtraso(opcoes ? opcoes.atraso : null);
     const st = cfg.ponte.estado ? cfg.ponte.estado() : null;
     const pos = st && st.pos ? st.pos : null;
     if (!rota.iniciar(cfg.agora(), pos)) return 0;
@@ -1070,6 +1122,7 @@ function criarMotor(opcoes) {
       indice: rota.indice(),
       proximo: alvo ? alvo.x + "," + alvo.y : "",
       maisProximo: !(opcoes && Number.isInteger(opcoes.indice)),
+      atraso: rota.atrasoConfig(),
       pontos: rota.pontos().map((p) => p.x + "," + p.y).join(";"),
     });
     return total;
@@ -1259,7 +1312,7 @@ function criarMotor(opcoes) {
     parar,
     modo: () => modo,
     pausadoAte: () => pausadoAte,
-    pausaRestante: () => Math.max(0, pausadoAte - cfg.agora()),
+    pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
     ultimoMotivo: () => ultimoMotivoParada,
     rota,
     seguidor,
@@ -1578,6 +1631,7 @@ function criarPainel(opcoes) {
       indice: motor.rota.indice(),
       volta: motor.rota.volta(),
       repetir: motor.rota.repetir(),
+      atraso: motor.rota.atrasoConfig ? motor.rota.atrasoConfig() : null,
       personagem: motor.sessao.snapshot().personagem,
       piso: st.pos && Number.isInteger(st.pos.z) ? st.pos.z : null,
       em: Date.now(),
@@ -1646,6 +1700,7 @@ function criarPainel(opcoes) {
 
     motor.iniciarRota(guardado.pontos, "retomada", {
       repetir: !!guardado.repetir,
+      atraso: guardado.atraso || null,
       indice: Number.isInteger(guardado.indice) ? guardado.indice : 0,
       volta: Number.isInteger(guardado.volta) ? guardado.volta : 0,
     });
@@ -1676,6 +1731,7 @@ function criarPainel(opcoes) {
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
       coleta: motor.tarefas ? motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null) : null,
+      tarefaCompleta: { repetir: repetirTask },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -1687,10 +1743,33 @@ function criarPainel(opcoes) {
 
   let assinado = false;
   let ligado = false;
+  let assinadoTarefa = false;
+  let repetirTask = (function () {
+    try { return localStorage.getItem("ovw.repetirTask") !== "0"; } catch (e) { return true; }
+  })();
+
+  // Popup "Tarefa completa" do cliente: escolhe Repetir/Terminar, fecha o diálogo e envia
+  // o mesmo pacote do botão oficial (sem click sintético, que acenderia o bit 32).
+  function aoTarefaCompleta(m) {
+    if (!m || !m.id) return;
+    try {
+      const dialogos = document.querySelectorAll("#hud .lo-dlg");
+      const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
+      if (ultimo && typeof ultimo._cerrar === "function") ultimo._cerrar();
+    } catch (e) {
+      // sem diálogo aberto: segue com o envio
+    }
+    const accion = repetirTask ? "repetir" : "terminar";
+    ponte.enviar({ t: "tarea", id: Number(m.id), accion: accion });
+    registro.evento("tarefa_completa", { id: m.id, accion: accion });
+  }
 
   function subir() {
     if (!ponte.pronto()) return false;
     if (!assinado) assinado = antibot.assinar();
+    if (!assinadoTarefa) {
+      assinadoTarefa = ponte.aoReceber("tareaRepetir", aoTarefaCompleta);
+    }
     if (!ligado) { motor.iniciar(); ligado = true; }
     return assinado && ligado;
   }
@@ -1749,6 +1828,13 @@ function criarPainel(opcoes) {
       ligado: function () { return motor.tarefas.ligado(); },
       definir: function (v) { motor.tarefas.definirLigado(v); },
       estado: function () { return motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null); },
+    },
+    repetirTask: {
+      ligado: function () { return repetirTask; },
+      definir: function (v) {
+        repetirTask = !!v;
+        try { localStorage.setItem("ovw.repetirTask", repetirTask ? "1" : "0"); } catch (e) { /* sem storage */ }
+      },
     },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },

@@ -44,7 +44,10 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   - **waypoint não andável** (checado em `mapa.caminable`) é pulado na hora;
   - se todos falharem, **espera 5 s e recomeça** (até 12 vezes) em vez de desistir;
   - **troca de piso** no meio da rota para o laço (o `ir` não sobe escada);
-  - a volta concluída limpa os pontos pulados e tenta todos de novo.
+  - **progresso renova o prazo**: enquanto anda, não conta como travamento (só para de verdade);
+  - a volta concluída limpa os pontos pulados e tenta todos de novo;
+  - **Atraso…** no painel: pausa entre waypoints, **exata** ou **aleatória** (de/até, em
+    segundos), com o `pausaMs` do ponto tendo prioridade.
 - **Seguidor**: segue qualquer jogador (lista os visíveis por nome/ID), para a 1 tile e
   desiste se o alvo desaparecer por 5 s.
 - **Sessão**: tempo, xp/h (XP absoluto, sem ficar negativo ao subir de nível), pontos,
@@ -54,6 +57,9 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **Prêmios**: coleta sozinho tarefas e missões concluídas (`estado 2`):
   `{t:"tarea", id, accion:"cobrar"}` e `{t:"mision", id}`. Checkbox “Coletar prêmios” no
   painel e contador de prontos/coletados.
+- **Tarefa completa**: quando o cliente abre o popup **Repetir/Terminar**, o Olivia escolhe
+  conforme o checkbox **“Repetir task completa”**, **fecha o diálogo pela função interna**
+  (`_cerrar`, sem clique sintético) e envia `{t:"tarea", id, accion:"repetir"|"terminar"}`.
 - **Humanização**: pausas longas de 8–20 s a cada 15–25 min (o seguidor não pausa).
 - **Painel nativo** (fora do DOM, invisível para o detector): estado, contadores, vida,
   poções, botões Rota/Seguir/Parar, checkboxes “Responder «Não»” e “Repetir”, log de eventos.

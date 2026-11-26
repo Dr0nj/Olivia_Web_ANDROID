@@ -115,7 +115,25 @@ real visível.
   limpa os pulados.
 - Contador de coleta já marcava **4 coletados** na sessão depois da correção.
 
-## 12. Pendências
+## 12. Atraso, progresso e popup de tarefa
+
+- **Diagnóstico do “parado com status andando”**: o log mostrava `rota_repetir` a cada
+  ~5 s mesmo com o personagem andando 10+ tiles (as posições mudavam entre os eventos).
+  O prazo da perna era só por tempo; ao esgotar, o motor pulava pontos e podia cair em
+  `rota_sem_caminho` (5 s parado, `esperas`). Correções: **progresso renova o prazo**
+  (`desde`/`limite`), o estado `esperando` aparece no topo do painel e a linha `pausa`
+  mostra o tempo restante da espera.
+- **Atraso entre waypoints** (porta do `WaypointPauseSettings` do desktop): config no
+  painel **Atraso…**, **exato** (`ms`) ou **aleatório** (`minMs`–`maxMs`), 0–60 s; o
+  `pausaMs` do ponto vence. Validado com 1,5 s exato: `atrasoConfig` =
+  `{modo:"exato", ms:1500}` e as voltas espaçadas no log.
+- **Popup “Tarefa completa”**: simulei o evento `tareaRepetir` (id 999). O cliente criou o
+  diálogo, o Olivia fechou (`#hud .lo-dlg` = 0), registrou `tarefa_completa` e enviou
+  `{t:"tarea", id:999, accion:"repetir"}` (+1 envio). Checkbox **Repetir task completa**
+  no painel; desmarcado envia `terminar`.
+- `q` continuou **16**.
+
+## 13. Pendências
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).

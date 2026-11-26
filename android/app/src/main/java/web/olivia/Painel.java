@@ -31,12 +31,13 @@ import java.util.Locale;
  */
 class Painel {
     interface Acoes {
-        void iniciarRota(String json, boolean repetir);
+        void iniciarRota(String json, boolean repetir, String atrasoJson);
         void definirRepetir(boolean repetir);
         void parar();
         void seguir(long id);
         void ligarAntiBot(boolean ligado);
         void ligarColeta(boolean ligado);
+        void ligarRepetirTask(boolean ligado);
         void zerar();
         void recarregar();
         void listarJogadores(RetornoLista retorno);
@@ -66,12 +67,14 @@ class Painel {
     private final CheckBox nao;
     private final CheckBox repetir;
     private final CheckBox coletar;
+    private final CheckBox repetirTask;
     private final TextView premios;
     private final java.util.ArrayDeque<String> historico = new java.util.ArrayDeque<>();
     private LinearLayout telaHub;
     private LinearLayout telaRota;
     private EditText campoRota;
     private TextView textoRota;
+    private TextView atrasoResumo;
     private String posAtual = "";
     private boolean recolhido = false;
 
@@ -169,6 +172,22 @@ class Painel {
         coleta.addView(premios);
         telaHub.addView(coleta);
 
+        LinearLayout taskLinha = linha();
+        taskLinha.setPadding(0, d(2), 0, 0);
+        repetirTask = new CheckBox(ctx);
+        repetirTask.setText("Repetir task completa");
+        repetirTask.setTextSize(9.5f);
+        repetirTask.setTextColor(Color.rgb(223, 231, 238));
+        repetirTask.setChecked(prefs.getBoolean("repetirTask", true));
+        repetirTask.setPadding(0, 0, 0, 0);
+        repetirTask.setOnCheckedChangeListener((b, marcado) -> {
+            if (prefs.getBoolean("repetirTask", true) == marcado) return;
+            prefs.edit().putBoolean("repetirTask", marcado).apply();
+            acoes.ligarRepetirTask(marcado);
+        });
+        taskLinha.addView(repetirTask);
+        telaHub.addView(taskLinha);
+
         LinearLayout botoes = linha();
         botoes.setPadding(0, d(4), 0, 0);
         botoes.addView(botao("Rota", v -> abrirTelaRota()));
@@ -239,6 +258,15 @@ class Painel {
         linha2.addView(botao("Voltar", v -> voltarHub()));
         tela.addView(linha2);
 
+        LinearLayout linhaAtraso = linha();
+        linhaAtraso.setPadding(0, d(3), 0, 0);
+        linhaAtraso.addView(botao("Atraso…", v -> dialogoAtraso()));
+        atrasoResumo = texto("sem atraso", 9.5f, Color.rgb(159, 179, 194), false);
+        atrasoResumo.setPadding(d(6), 0, 0, 0);
+        linhaAtraso.addView(atrasoResumo);
+        tela.addView(linhaAtraso);
+        atualizarResumoAtraso();
+
         TextView dica = texto("Ande e toque em Marcar aqui; o último ponto deve ficar perto do primeiro.",
                 8.4f, Color.rgb(111, 138, 156), false);
         dica.setPadding(0, d(3), 0, 0);
@@ -282,6 +310,129 @@ class Painel {
         campoRota.setText("");
         prefs.edit().remove("rota").apply();
         atualizarTextoRota();
+    }
+
+    private String segundos(int ms) {
+        return String.format(Locale.getDefault(), "%.1f", ms / 1000.0);
+    }
+
+    private void atualizarResumoAtraso() {
+        if (atrasoResumo == null) return;
+        if (!prefs.getBoolean("atrasoAtivo", false)) {
+            atrasoResumo.setText("sem atraso");
+        } else if (prefs.getBoolean("atrasoAleatorio", false)) {
+            atrasoResumo.setText(segundos(prefs.getInt("atrasoMinMs", 1000))
+                    + "–" + segundos(prefs.getInt("atrasoMaxMs", 3000)) + " s");
+        } else {
+            atrasoResumo.setText(segundos(prefs.getInt("atrasoMs", 1000)) + " s fixo");
+        }
+    }
+
+    private EditText campoSegundos(int ms) {
+        EditText e = new EditText(ctx);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        e.setSingleLine(true);
+        e.setTextSize(12f);
+        e.setText(segundos(ms));
+        e.setLayoutParams(new LinearLayout.LayoutParams(d(56), ViewGroup.LayoutParams.WRAP_CONTENT));
+        return e;
+    }
+
+    private double lerSegundos(EditText campo, double padrao) {
+        try {
+            double v = Double.parseDouble(campo.getText().toString().trim().replace(",", "."));
+            return Math.max(0, Math.min(60, v));
+        } catch (Exception e) {
+            return padrao;
+        }
+    }
+
+    private void dialogoAtraso() {
+        final CheckBox ligado = new CheckBox(ctx);
+        ligado.setText("Ativar atraso nos waypoints");
+        ligado.setTextSize(10f);
+        ligado.setChecked(prefs.getBoolean("atrasoAtivo", false));
+
+        final CheckBox aleatorio = new CheckBox(ctx);
+        aleatorio.setText("Aleatório");
+        aleatorio.setTextSize(10f);
+        aleatorio.setChecked(prefs.getBoolean("atrasoAleatorio", false));
+
+        final EditText de = campoSegundos(prefs.getInt("atrasoMinMs", 1000));
+        final EditText ate = campoSegundos(prefs.getInt("atrasoMaxMs", 3000));
+
+        LinearLayout valores = linha();
+        valores.addView(texto("de", 9.5f, Color.rgb(159, 179, 194), false));
+        valores.addView(de);
+        valores.addView(texto("até", 9.5f, Color.rgb(159, 179, 194), false));
+        valores.addView(ate);
+        valores.addView(texto("s", 9.5f, Color.rgb(159, 179, 194), false));
+
+        final Runnable estado = () -> {
+            boolean on = ligado.isChecked();
+            de.setEnabled(on);
+            ate.setEnabled(on && aleatorio.isChecked());
+        };
+        ligado.setOnCheckedChangeListener((b, m) -> estado.run());
+        aleatorio.setOnCheckedChangeListener((b, m) -> estado.run());
+
+        LinearLayout caixa = new LinearLayout(ctx);
+        caixa.setOrientation(LinearLayout.VERTICAL);
+        int pad = d(16);
+        caixa.setPadding(pad, d(4), pad, 0);
+        caixa.addView(ligado);
+        caixa.addView(aleatorio);
+        caixa.addView(valores);
+        TextView dica = texto("Segundos (0 a 60). No modo exato vale só o \"de\".", 8.5f,
+                Color.rgb(111, 138, 156), false);
+        dica.setPadding(0, d(4), 0, 0);
+        caixa.addView(dica);
+        estado.run();
+
+        new AlertDialog.Builder(ctx)
+                .setTitle("Atraso nos waypoints")
+                .setView(caixa)
+                .setPositiveButton("Salvar", (d, w) -> {
+                    double vDe = lerSegundos(de, 1.0);
+                    double vAte = aleatorio.isChecked() ? lerSegundos(ate, 3.0) : vDe;
+                    if (vAte < vDe) vAte = vDe;
+                    int msDe = (int) Math.round(vDe * 1000);
+                    int msAte = (int) Math.round(vAte * 1000);
+                    prefs.edit()
+                            .putBoolean("atrasoAtivo", ligado.isChecked())
+                            .putBoolean("atrasoAleatorio", aleatorio.isChecked())
+                            .putInt("atrasoMs", msDe)
+                            .putInt("atrasoMinMs", msDe)
+                            .putInt("atrasoMaxMs", msAte)
+                            .apply();
+                    atualizarResumoAtraso();
+                    atualizarTextoRota();
+                    nota("atraso: " + (ligado.isChecked()
+                            ? (aleatorio.isChecked()
+                            ? segundos(msDe) + "–" + segundos(msAte) + " s aleatório"
+                            : segundos(msDe) + " s exato")
+                            : "sem atraso"));
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private String atrasoJson() {
+        JSONObject o = new JSONObject();
+        try {
+            if (!prefs.getBoolean("atrasoAtivo", false)) {
+                o.put("modo", "off");
+            } else if (prefs.getBoolean("atrasoAleatorio", false)) {
+                o.put("modo", "aleatorio");
+                o.put("minMs", prefs.getInt("atrasoMinMs", 1000));
+                o.put("maxMs", prefs.getInt("atrasoMaxMs", 3000));
+            } else {
+                o.put("modo", "exato");
+                o.put("ms", prefs.getInt("atrasoMs", 1000));
+            }
+        } catch (Exception ignorado) {
+        }
+        return o.toString();
     }
 
     private void marcarPontoAtual() {
@@ -342,7 +493,7 @@ class Painel {
             if (lista.length() == 0) throw new Exception("rota vazia");
             String normal = lista.toString();
             prefs.edit().putString("rota", normal).apply();
-            acoes.iniciarRota(normal, repetir.isChecked());
+            acoes.iniciarRota(normal, repetir.isChecked(), atrasoJson());
             voltarHub();
             nota("rota com " + lista.length() + " pontos" + (repetir.isChecked() ? " · repetindo" : ""));
         } catch (Exception e) {
@@ -359,10 +510,14 @@ class Painel {
             JSONObject antibot = s.optJSONObject("antibot");
             JSONObject sup = s.optJSONObject("suprimentos");
             JSONObject coleta = s.optJSONObject("coleta");
+            JSONObject tarefaCompleta = s.optJSONObject("tarefaCompleta");
 
             estado.setText("seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
                     ? "seguindo " + s.optString("seguir")
-                    : modo);
+                    : ("rota".equals(modo) && s.has("rota") && s.optJSONObject("rota") != null
+                    && "esperando".equals(s.optJSONObject("rota").optString("situacao", ""))
+                    ? "rota · esperando"
+                    : modo));
 
             if (rota != null) {
                 int total = rota.optInt("total", 0);
@@ -443,6 +598,11 @@ class Painel {
                 int feitos = coleta.optInt("missoes", 0) + coleta.optInt("tarefas", 0);
                 premios.setText(prontos + (prontos == 1 ? " pronto" : " prontos")
                         + " · " + feitos + " coletado" + (feitos == 1 ? "" : "s"));
+            }
+
+            if (tarefaCompleta != null) {
+                boolean rep = tarefaCompleta.optBoolean("repetir", true);
+                if (repetirTask.isChecked() != rep) repetirTask.setChecked(rep);
             }
 
             if (jogo != null && !jogo.optBoolean("emJogo", false)) {

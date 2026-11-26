@@ -24,10 +24,12 @@ const corpo = ordem
   .replace(/^import[^\n]*\n/gm, "")
   .replace(/^export\s+/gm, "");
 
+const pacote = JSON.parse(readFileSync(join(raiz, "package.json"), "utf8"));
+
 const cabecalho = `// ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.2.0
+// @version      ${pacote.version}
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*

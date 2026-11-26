@@ -131,10 +131,15 @@ real visível.
   diálogo, o Olivia fechou (`#hud .lo-dlg` = 0), registrou `tarefa_completa` e enviou
   `{t:"tarea", id:999, accion:"repetir"}` (+1 envio). Checkbox **Repetir task completa**
   no painel; desmarcado envia `terminar`.
-- **Pacote único “Tarefas/missões auto”** (0.6.1): um switch liga coleta + popup de tarefa
-  + aceite de bônus; **Repetir ao concluir** escolhe repetir/terminar. Ao vivo: com auto
-  ligado, `tareaRepetir` → +1 envio e `bonusOferta` → +1 envio, diálogos fechados; com auto
-  desligado, 0 envios e o popup fica para o usuário. Logs: `tarefa_completa`, `bonus_aceito`.
+- **Pacote único “Repetir task/missões e coletar”** (0.6.3): um switch liga coleta +
+  **repetição da task que finalizou** + aceite de bônus. Ao vivo no emulador: apareceu o
+  popup **real** “Task complete: Bats (3/9 today)” (auto estava desligado por um teste);
+  cliquei em **Repeat** (a mesma ação que o Olivia envia) e a task voltou a `estado 1`
+  (`Bats 9/150`). Com o switch ligado, `tareaRepetir` → +1 envio e `bonusOferta` → +1 envio,
+  diálogos fechados; desligado, 0 envios.
+- **Anti-bot real**: o painel passou a mostrar `desafio 1/1` com uma janela real do servidor,
+  respondida sozinha (além do teste simulado em §13). Logs: `tarefa_completa`,
+  `bonus_aceito`, `antibot_resposta`.
 - `q` continuou **16**.
 
 ## 13. Anti-bot: resposta real (não só ensaio)

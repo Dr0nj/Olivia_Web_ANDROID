@@ -122,9 +122,9 @@ Esperado: `{"q":16,...}`. Se vier 80, ver §0.
 
 ## 4. Prêmios: tarefas e missões (2 min)
 
-O painel tem **Tarefas/missões auto** (ligado por padrão) e a linha `N prontos · M coletados`.
-Esse único switch liga a coleta, o popup de tarefa e o aceite do bônus. **Repetir ao
-concluir** define o que fazer no popup (marcado = repetir; desmarcado = terminar).
+O painel tem **Repetir task/missões e coletar** (ligado por padrão) e a linha
+`N prontos · M coletados`. Esse único switch liga a coleta, a repetição da task que
+finalizou e o aceite do bônus.
 
 - **Tarefas** (as barras no topo): `estado 2` = concluída → o Olivia envia
   `{t:"tarea", id, accion:"cobrar"}`.
@@ -138,13 +138,13 @@ contador `coletados` aumentar. **Aceitar** missão nova continua sendo falar com
 
 **Popup “Tarefa completa” (Repetir/Terminar)**
 
-Com **Tarefas/missões auto** ligado, quando o cliente abre o popup o Olivia escolhe pelo
-checkbox **Repetir ao concluir** (marcado = `repetir`, desmarcado = `terminar`), fecha o
-diálogo pela função interna e envia `{t:"tarea", id, accion:...}` — sem clique sintético
-(não acende o bit 32). O log mostra `tarefa_completa`.
+Com **Repetir task/missões e coletar** ligado, quando o cliente abre o popup o Olivia
+**repete a task que acabou de finalizar** (usa o `id` do popup), fecha o diálogo pela função
+interna e envia `{t:"tarea", id, accion:"repetir"}` — sem clique sintético (não acende o
+bit 32). O log mostra `tarefa_completa`.
 
 O popup de **missão bônus** também é aceito sozinho (`{t:"bonus", accion:"aceptar", id}`) e
-o log mostra `bonus_aceito`. Com o automático desligado, os dois popups ficam para você.
+o log mostra `bonus_aceito`. Com o switch desligado, a coleta e os popups ficam para você.
 
 ## 5. Anti-bot em ensaio (2 min) — e o teste real
 

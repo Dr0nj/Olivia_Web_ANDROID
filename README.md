@@ -54,13 +54,13 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   voltas, mortes, paradas, desafios respondidos/janelas.
 - **Suprimentos**: poções de vida/mana, itens e ouro do inventário; consumo/hora e tempo
   restante estimado. “Itens” é a soma das quantidades na mochila (não os slots).
-- **Tarefas/missões auto** (checkbox): um pacote só para
-  - **coletar** tarefas e missões concluídas (`cobrar` / `{t:"mision",id}`),
-  - **popup “Tarefa completa”**: escolhe Repetir/Terminar (checkbox **Repetir ao concluir**),
-    fecha o diálogo pela função interna (`_cerrar`, sem clique sintético) e envia
-    `{t:"tarea", id, accion:"repetir"|"terminar"}`,
-  - **oferta de missão bônus**: aceita (`{t:"bonus", accion:"aceptar", id}`) e fecha.
-  Com o automático desligado, os popups ficam para você.
+- **Repetir task/missões e coletar** (checkbox único):
+  - **coleta** tarefas e missões concluídas (`cobrar` / `{t:"mision",id}`);
+  - no popup **“Task complete”**, **repete a task que acabou de finalizar** (usa o `id` do
+    popup), fecha o diálogo pela função interna (`_cerrar`, sem clique sintético) e envia
+    `{t:"tarea", id, accion:"repetir"}`;
+  - **aceita a missão bônus** (`{t:"bonus", accion:"aceptar", id}`) e fecha o popup;
+  - desligado: a coleta e os popups ficam para você.
 - **Humanização**: pausas longas de 8–20 s a cada 15–25 min (o seguidor não pausa).
 - **Painel nativo** (fora do DOM, invisível para o detector): estado, contadores, vida,
   poções, botões Rota/Seguir/Parar, checkboxes “Responder «Não»” e “Repetir”, log de eventos.

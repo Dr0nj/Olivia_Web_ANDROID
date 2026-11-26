@@ -185,7 +185,6 @@ import { criarPainel } from "./painel.js";
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
       coleta: motor.tarefas ? motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null) : null,
-      tarefaCompleta: { ligado: motor.tarefas ? motor.tarefas.ligado() : true, repetir: repetirTask },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -198,12 +197,9 @@ import { criarPainel } from "./painel.js";
   let assinado = false;
   let ligado = false;
   let assinadoTarefa = false;
-  let repetirTask = (function () {
-    try { return localStorage.getItem("ovw.repetirTask") !== "0"; } catch (e) { return true; }
-  })();
 
-  // Popup "Tarefa completa" do cliente: escolhe Repetir/Terminar, fecha o diálogo e envia
-  // o mesmo pacote do botão oficial (sem click sintético, que acenderia o bit 32).
+  // Popup "Tarefa completa" do cliente: repete a task que acabou de finalizar, fecha o
+  // diálogo e envia o mesmo pacote do botão oficial (sem click sintético, bit 32).
   function aoTarefaCompleta(m) {
     if (!m || !m.id) return;
     if (motor.tarefas && !motor.tarefas.ligado()) return; // usuário desligou o automático
@@ -214,9 +210,8 @@ import { criarPainel } from "./painel.js";
     } catch (e) {
       // sem diálogo aberto: segue com o envio
     }
-    const accion = repetirTask ? "repetir" : "terminar";
-    ponte.enviar({ t: "tarea", id: Number(m.id), accion: accion });
-    registro.evento("tarefa_completa", { id: m.id, accion: accion });
+    ponte.enviar({ t: "tarea", id: Number(m.id), accion: "repetir" });
+    registro.evento("tarefa_completa", { id: m.id, accion: "repetir" });
   }
 
   // Oferta de missão bônus (outro popup do cliente): aceita e fecha.
@@ -299,13 +294,6 @@ import { criarPainel } from "./painel.js";
       ligado: function () { return motor.tarefas.ligado(); },
       definir: function (v) { motor.tarefas.definirLigado(v); },
       estado: function () { return motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null); },
-    },
-    repetirTask: {
-      ligado: function () { return repetirTask; },
-      definir: function (v) {
-        repetirTask = !!v;
-        try { localStorage.setItem("ovw.repetirTask", repetirTask ? "1" : "0"); } catch (e) { /* sem storage */ }
-      },
     },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },

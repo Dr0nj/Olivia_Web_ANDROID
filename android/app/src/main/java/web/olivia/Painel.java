@@ -37,7 +37,6 @@ class Painel {
         void seguir(long id);
         void ligarAntiBot(boolean ligado);
         void ligarColeta(boolean ligado);
-        void ligarRepetirTask(boolean ligado);
         void zerar();
         void recarregar();
         void listarJogadores(RetornoLista retorno);
@@ -67,7 +66,6 @@ class Painel {
     private final CheckBox nao;
     private final CheckBox repetir;
     private final CheckBox coletar;
-    private final CheckBox repetirTask;
     private final TextView premios;
     private final java.util.ArrayDeque<String> historico = new java.util.ArrayDeque<>();
     private LinearLayout telaHub;
@@ -157,7 +155,7 @@ class Painel {
         LinearLayout coleta = linha();
         coleta.setPadding(0, d(3), 0, 0);
         coletar = new CheckBox(ctx);
-        coletar.setText("Tarefas/missões auto");
+        coletar.setText("Repetir task/missões e coletar");
         coletar.setTextSize(9.5f);
         coletar.setTextColor(Color.rgb(223, 231, 238));
         coletar.setChecked(prefs.getBoolean("coletar", true));
@@ -171,22 +169,6 @@ class Painel {
         premios.setPadding(d(8), 0, 0, 0);
         coleta.addView(premios);
         telaHub.addView(coleta);
-
-        LinearLayout taskLinha = linha();
-        taskLinha.setPadding(0, d(2), 0, 0);
-        repetirTask = new CheckBox(ctx);
-        repetirTask.setText("Repetir ao concluir");
-        repetirTask.setTextSize(9.5f);
-        repetirTask.setTextColor(Color.rgb(223, 231, 238));
-        repetirTask.setChecked(prefs.getBoolean("repetirTask", true));
-        repetirTask.setPadding(0, 0, 0, 0);
-        repetirTask.setOnCheckedChangeListener((b, marcado) -> {
-            if (prefs.getBoolean("repetirTask", true) == marcado) return;
-            prefs.edit().putBoolean("repetirTask", marcado).apply();
-            acoes.ligarRepetirTask(marcado);
-        });
-        taskLinha.addView(repetirTask);
-        telaHub.addView(taskLinha);
 
         LinearLayout botoes = linha();
         botoes.setPadding(0, d(4), 0, 0);
@@ -510,7 +492,6 @@ class Painel {
             JSONObject antibot = s.optJSONObject("antibot");
             JSONObject sup = s.optJSONObject("suprimentos");
             JSONObject coleta = s.optJSONObject("coleta");
-            JSONObject tarefaCompleta = s.optJSONObject("tarefaCompleta");
 
             estado.setText("seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
                     ? "seguindo " + s.optString("seguir")
@@ -598,11 +579,6 @@ class Painel {
                 int feitos = coleta.optInt("missoes", 0) + coleta.optInt("tarefas", 0);
                 premios.setText(prontos + (prontos == 1 ? " pronto" : " prontos")
                         + " · " + feitos + " coletado" + (feitos == 1 ? "" : "s"));
-            }
-
-            if (tarefaCompleta != null) {
-                boolean rep = tarefaCompleta.optBoolean("repetir", true);
-                if (repetirTask.isChecked() != rep) repetirTask.setChecked(rep);
             }
 
             if (jogo != null && !jogo.optBoolean("emJogo", false)) {

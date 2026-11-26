@@ -154,7 +154,7 @@ class Painel {
         LinearLayout coleta = linha();
         coleta.setPadding(0, d(3), 0, 0);
         coletar = new CheckBox(ctx);
-        coletar.setText("Coletar prêmios");
+        coletar.setText("Coletar tarefas/missões");
         coletar.setTextSize(9.5f);
         coletar.setTextColor(Color.rgb(223, 231, 238));
         coletar.setChecked(prefs.getBoolean("coletar", true));

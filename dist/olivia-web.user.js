@@ -484,12 +484,12 @@ function criarTarefas(opcoes) {
       const chave = tipo + item.id;
       let m = memoria.get(chave);
       if (!m) {
-        m = { estado: null, tentativas: 0, ultima: -Infinity };
+        m = { estado: null, tentativas: 0, ultima: -Infinity, contado: false };
         memoria.set(chave, m);
       }
 
       if (m.estado !== item.estado) {
-        if (m.estado === 2 && item.estado !== 2) {
+        if (m.estado === 2 && item.estado !== 2 && !m.contado) {
           if (tipo === "m") coletadasMissoes += 1;
           else coletadasTarefas += 1;
         }
@@ -497,6 +497,7 @@ function criarTarefas(opcoes) {
         if (item.estado === 2) {
           m.tentativas = 0;
           m.ultima = -Infinity;
+          m.contado = false;
         }
       }
 
@@ -506,20 +507,21 @@ function criarTarefas(opcoes) {
 
       m.tentativas += 1;
       m.ultima = agora;
+      if (!m.contado) {
+        m.contado = true;
+        if (tipo === "m") coletadasMissoes += 1;
+        else coletadasTarefas += 1;
+      }
       acoes.push(tipo === "m"
         ? { tipo: "m", id: item.id, mensagem: { t: "mision", id: item.id } }
         : { tipo: "t", id: item.id, mensagem: { t: "tarea", id: item.id, accion: "cobrar" } });
     });
   }
 
-  // Missão/tarefa coletada some da lista: credita quem já teve envio e limpa a memória.
+  // Missão/tarefa coletada some da lista: limpa a memória (o crédito já foi no envio).
   function fecharAusentes(presentes) {
     memoria.forEach(function (m, chave) {
       if (presentes.has(chave)) return;
-      if (m.estado === 2 && m.tentativas > 0) {
-        if (chave[0] === "m") coletadasMissoes += 1;
-        else coletadasTarefas += 1;
-      }
       memoria.delete(chave);
     });
   }
@@ -566,6 +568,13 @@ function criarTarefas(opcoes) {
     ligado: () => ligado,
     definirLigado: (v) => { ligado = !!v; },
     zerar: () => { coletadasTarefas = 0; coletadasMissoes = 0; memoria.clear(); },
+    exportar: () => ({ tarefas: coletadasTarefas, missoes: coletadasMissoes }),
+    importar: (obj) => {
+      if (!obj || typeof obj !== "object") return false;
+      coletadasTarefas = Math.max(0, Number(obj.tarefas) || 0);
+      coletadasMissoes = Math.max(0, Number(obj.missoes) || 0);
+      return true;
+    },
     snapshot: (entrada) => {
       const p = pendentes(entrada);
       return {
@@ -1333,6 +1342,7 @@ function criarPainel(opcoes) {
 
   const CHAVE_ROTA = "ovw.rota.estado";
   const CHAVE_SESSAO = "ovw.sessao";
+  const CHAVE_COLETA = "ovw.coleta";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -1370,6 +1380,7 @@ function criarPainel(opcoes) {
   });
 
   const motor = criarMotor({ ponte: ponte, log: registro });
+  restaurarColeta();
 
   const antibot = criarAntiBot({
     ponte: ponte,
@@ -1414,6 +1425,12 @@ function criarPainel(opcoes) {
     const s = motor.sessao.exportar();
     if (!s || !s.personagem) return;
     gravar(CHAVE_SESSAO, { em: Date.now(), estado: s });
+    if (motor.tarefas) gravar(CHAVE_COLETA, motor.tarefas.exportar());
+  }
+
+  function restaurarColeta() {
+    const guardado = ler(CHAVE_COLETA);
+    if (guardado && motor.tarefas) motor.tarefas.importar(guardado);
   }
 
   function restaurarSessao() {
@@ -1575,6 +1592,7 @@ function criarPainel(opcoes) {
       try {
         localStorage.removeItem(CHAVE_ROTA);
         localStorage.removeItem(CHAVE_SESSAO);
+        localStorage.removeItem(CHAVE_COLETA);
       } catch (e) { /* sem storage */ }
       if (painel) painel.atualizar();
       publicar();

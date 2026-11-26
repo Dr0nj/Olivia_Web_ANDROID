@@ -16,6 +16,7 @@ import { criarPainel } from "./painel.js";
 
   const CHAVE_ROTA = "ovw.rota.estado";
   const CHAVE_SESSAO = "ovw.sessao";
+  const CHAVE_COLETA = "ovw.coleta";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -53,6 +54,7 @@ import { criarPainel } from "./painel.js";
   });
 
   const motor = criarMotor({ ponte: ponte, log: registro });
+  restaurarColeta();
 
   const antibot = criarAntiBot({
     ponte: ponte,
@@ -97,6 +99,12 @@ import { criarPainel } from "./painel.js";
     const s = motor.sessao.exportar();
     if (!s || !s.personagem) return;
     gravar(CHAVE_SESSAO, { em: Date.now(), estado: s });
+    if (motor.tarefas) gravar(CHAVE_COLETA, motor.tarefas.exportar());
+  }
+
+  function restaurarColeta() {
+    const guardado = ler(CHAVE_COLETA);
+    if (guardado && motor.tarefas) motor.tarefas.importar(guardado);
   }
 
   function restaurarSessao() {
@@ -258,6 +266,7 @@ import { criarPainel } from "./painel.js";
       try {
         localStorage.removeItem(CHAVE_ROTA);
         localStorage.removeItem(CHAVE_SESSAO);
+        localStorage.removeItem(CHAVE_COLETA);
       } catch (e) { /* sem storage */ }
       if (painel) painel.atualizar();
       publicar();

@@ -103,7 +103,19 @@ real visível.
 - **Aceitar** missão nova não é automatizado: a oferta vem no diálogo do NPC; o Olivia
   só coleta o que já está completo.
 
-## 11. Pendências
+## 11. Navegação (regras do desktop no web)
+
+- **Começa pelo waypoint mais próximo**: rota `[[109,97],[89,117],[92,100]]` com o
+  personagem em `(89,97)` → `rota_inicio` com `indice:2`, `proximo:92,100`.
+- **Pula ponto inválido**: `(109,97)` não era andável na cave → `rota_ponto_invalido` e
+  seguia para o próximo; `pulados:[0]`.
+- **Laço e volta** continuaram (volta 1, 2...) e `q` ficou **16**.
+- Regras no driver: chegada exata ou a 1 tile parado 0,6 s; pulo após 2 tentativas sem
+  progresso; espera 5 s × 12 quando não há caminho; troca de piso para o laço; a volta
+  limpa os pulados.
+- Contador de coleta já marcava **4 coletados** na sessão depois da correção.
+
+## 12. Pendências
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).

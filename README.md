@@ -37,6 +37,14 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   reinjeção (mesmo piso e mesmo personagem). **Rota** troca o hub por uma tela de rota no
   próprio painel: **Marcar aqui** enquanto anda, **Desfazer**, **Salvar…**, **Abrir…**
   (lista de rotas nomeadas), **Limpar**, **Iniciar** e **Voltar**.
+- **Navegação** (regras trazidas do desktop):
+  - ao **Iniciar**, começa pelo waypoint **mais próximo** da posição atual, não pelo ponto 0;
+  - chegada exata; se parar a 1 tile e ficar parado ~0,6 s, conta como chegado;
+  - depois de **2 tentativas** sem progresso, **pula** o waypoint e tenta o próximo;
+  - **waypoint não andável** (checado em `mapa.caminable`) é pulado na hora;
+  - se todos falharem, **espera 5 s e recomeça** (até 12 vezes) em vez de desistir;
+  - **troca de piso** no meio da rota para o laço (o `ir` não sobe escada);
+  - a volta concluída limpa os pontos pulados e tenta todos de novo.
 - **Seguidor**: segue qualquer jogador (lista os visíveis por nome/ID), para a 1 tile e
   desiste se o alvo desaparecer por 5 s.
 - **Sessão**: tempo, xp/h (XP absoluto, sem ficar negativo ao subir de nível), pontos,

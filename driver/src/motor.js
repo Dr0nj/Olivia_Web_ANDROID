@@ -36,6 +36,7 @@ export function criarMotor(opcoes) {
   let ultimoPersonagem = null;
   let ultimoMotivoParada = null;
   let trecho = null; // trecho atual: { destino, alvo }
+  let pisoRota = null;
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -75,18 +76,24 @@ export function criarMotor(opcoes) {
   function iniciarRota(pontos, origem, opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
-    if (!rota.iniciar(cfg.agora())) return 0;
+    const st = cfg.ponte.estado ? cfg.ponte.estado() : null;
+    const pos = st && st.pos ? st.pos : null;
+    if (!rota.iniciar(cfg.agora(), pos)) return 0;
     if (opcoes && Number.isInteger(opcoes.indice)) rota.posicionar(opcoes.indice);
     if (opcoes && Number.isInteger(opcoes.volta)) rota.definirVolta(opcoes.volta);
     modo = "rota";
     ultimoAlvo = "";
     trecho = null;
+    pisoRota = pos && Number.isInteger(pos.z) ? pos.z : null;
     ultimoMotivoParada = null;
+    const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
       origem: origem || "api",
       repetir: rota.repetir(),
       indice: rota.indice(),
+      proximo: alvo ? alvo.x + "," + alvo.y : "",
+      maisProximo: !(opcoes && Number.isInteger(opcoes.indice)),
       pontos: rota.pontos().map((p) => p.x + "," + p.y).join(";"),
     });
     return total;
@@ -109,6 +116,7 @@ export function criarMotor(opcoes) {
     seguindoId = null;
     ultimoAlvo = "";
     trecho = null;
+    pisoRota = null;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
     sessao.parada();
@@ -166,8 +174,29 @@ export function criarMotor(opcoes) {
     }
 
     if (modo === "rota") {
+      // Escada/mapa mudou no meio da rota: o `ir` não atravessa piso.
+      if (st.pos && Number.isInteger(st.pos.z)) {
+        if (pisoRota === null) pisoRota = st.pos.z;
+        else if (st.pos.z !== pisoRota) {
+          registro.evento("rota_piso_mudou", { de: pisoRota, para: st.pos.z, pos: st.pos });
+          parar("piso");
+          return;
+        }
+      }
+
       const d = rota.passo({ pos: st.pos, agora: agora });
       if (!d) return;
+
+      if (d.acao === "ir" && cfg.ponte.caminavel && !cfg.ponte.caminavel(d.x, d.y)) {
+        const r = rota.pularAtual(agora);
+        registro.evento("rota_ponto_invalido", { alvo: d.x + "," + d.y, restantes: r.restantes });
+        if (!r.ok) {
+          registro.evento("rota_sem_caminho", { motivo: "invalido" });
+          cfg.ponte.enviar({ t: "parar" });
+        }
+        return;
+      }
+
       if (d.acao === "ir" || d.acao === "repetir") {
         const alvo = proximoTrecho({ x: d.x, y: d.y }, st.pos);
         enviarIr(alvo.x, alvo.y, d.acao === "repetir");
@@ -177,6 +206,17 @@ export function criarMotor(opcoes) {
       if (d.acao === "avancar") {
         sessao.pontoConcluido();
         registro.evento("rota_avancar", { indice: d.indice, alvo: d.alvo, pos: st.pos });
+        return;
+      }
+      if (d.acao === "pular") {
+        registro.evento("rota_pulou", { alvo: d.alvo ? d.alvo.x + "," + d.alvo.y : "", indice: d.indice, restantes: d.restantes });
+        return;
+      }
+      if (d.acao === "sem_caminho") {
+        registro.evento("rota_sem_caminho", { esperaMs: d.esperaMs, esperas: d.esperas });
+        cfg.ponte.enviar({ t: "parar" });
+        ultimoAlvo = "";
+        trecho = null;
         return;
       }
       if (d.acao === "volta") {
@@ -193,8 +233,8 @@ export function criarMotor(opcoes) {
         return;
       }
       if (d.acao === "desistir") {
-        registro.evento("rota_desistiu", { indice: d.indice, alvo: rota.alvo(), pos: st.pos });
-        parar("rota_desistiu");
+        registro.evento("rota_desistiu", { indice: d.indice, motivo: d.motivo || "", alvo: rota.alvo(), pos: st.pos });
+        parar(d.motivo === "sem_caminho" ? "sem_caminho" : "rota_desistiu");
       }
       return;
     }

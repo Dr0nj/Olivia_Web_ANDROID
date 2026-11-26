@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.4.0
+// @version      0.5.0
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -163,11 +163,23 @@ function criarHumano(opcoes) {
 }
 
 
-// Motor de rota: pontos em tiles, chegada, timeout, novas tentativas e pausa por ponto.
+// Motor de rota: pontos em tiles, chegada por proximidade, timeout, pulo de ponto,
+// espera quando não há caminho e repetição de volta.
+//
+// Regras trazidas do Olivia desktop:
+//  - começa pelo waypoint MAIS PRÓXIMO da posição atual (não sempre o ponto 0);
+//  - chegada com raio (não precisa pisar exatamente no tile);
+//  - depois de N tentativas sem progresso, pula o ponto e tenta o próximo alcançável;
+//  - se todos os pontos falharem, espera 5 s e recomeça a volta (até 12 vezes);
+//  - a volta concluída limpa os pontos pulados.
 function criarRota(opcoes) {
   const cfg = Object.assign({
     timeoutMs: 2500,
-    tentativasMax: 3,
+    // Tentativas antes de pular o waypoint (desktop: SKIP_AFTER=2).
+    pularApos: 2,
+    // Chegou a <= raioChegada tiles (Chebyshev) e ficou parado: conta como chegado.
+    raioChegada: 1,
+    settleMs: 600,
     pausaPadraoMs: 0,
     // Perna longa não é falha: o limite cresce com a distância até o alvo.
     msPorTile: 350,
@@ -175,17 +187,28 @@ function criarRota(opcoes) {
     // Rota fechada: ao chegar no último ponto, volta ao primeiro.
     repetir: false,
     voltasMax: 0, // 0 = sem limite
+    // Sem caminho: espera e tenta de novo (desktop: 5 s x 12).
+    esperaMs: 5000,
+    esperasMax: 12,
   }, opcoes || {});
 
   let pontos = [];
   let indice = 0;
-  let situacao = "parada"; // parada | andando | pausada | concluida | desistiu
+  let situacao = "parada"; // parada | andando | pausada | esperando | concluida | desistiu
   let tentativas = 0;
   let desde = 0;
   let pausaAte = 0;
   let finalizando = false;
   let volta = 0;
-  let limite = null; // prazo da perna atual; calculado no primeiro passo com posição
+  let limite = null; // prazo da perna atual
+  let pulados = new Set();
+  let esperas = 0;
+  let ultimaPos = null;
+  let paradoDesde = 0;
+
+  function cheb(a, b) {
+    return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  }
 
   function normalizar(lista) {
     if (!Array.isArray(lista) || lista.length === 0) throw new Error("rota vazia");
@@ -209,23 +232,41 @@ function criarRota(opcoes) {
     tentativas = 0;
     finalizando = false;
     volta = 0;
+    pulados = new Set();
+    esperas = 0;
     return pontos.length;
+  }
+
+  function maisProximo(pos) {
+    let melhor = 0;
+    let dist = Infinity;
+    pontos.forEach(function (p, i) {
+      const d = cheb(pos, p);
+      if (d < dist) {
+        dist = d;
+        melhor = i;
+      }
+    });
+    return melhor;
   }
 
   // Prazo de uma perna: cresce com a distância em tiles, com teto.
   function prazoDe(pos, alvo) {
-    const distancia = Math.max(Math.abs(alvo.x - pos.x), Math.abs(alvo.y - pos.y));
+    const distancia = cheb(pos, alvo);
     return Math.min(cfg.timeoutMaxMs, Math.max(cfg.timeoutMs, distancia * cfg.msPorTile));
   }
 
-  function iniciar(agora) {
+  function iniciar(agora, pos) {
     if (!pontos.length) return false;
-    indice = 0;
+    indice = pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) ? maisProximo(pos) : 0;
     tentativas = 0;
     desde = agora;
     pausaAte = 0;
     finalizando = false;
     limite = null;
+    pulados = new Set();
+    esperas = 0;
+    ultimaPos = null;
     situacao = "andando";
     return true;
   }
@@ -254,6 +295,8 @@ function criarRota(opcoes) {
     desde = 0;
     tentativas = 0;
     limite = null;
+    pulados = new Set();
+    ultimaPos = null;
     return true;
   }
 
@@ -268,9 +311,58 @@ function criarRota(opcoes) {
     return volta;
   }
 
+  // Avança para o próximo ponto ainda não pulado nesta volta.
+  function proximoNaoPulado() {
+    for (let n = 1; n <= pontos.length; n += 1) {
+      const i = (indice + n) % pontos.length;
+      if (!pulados.has(i)) {
+        indice = i;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function entrarEspera(agora) {
+    esperas += 1;
+    if (esperas > cfg.esperasMax) {
+      situacao = "desistiu";
+      return { acao: "desistir", motivo: "sem_caminho", esperas: esperas - 1 };
+    }
+    pulados = new Set();
+    tentativas = 0;
+    situacao = "esperando";
+    pausaAte = agora + cfg.esperaMs;
+    return { acao: "sem_caminho", esperaMs: cfg.esperaMs, esperas: esperas };
+  }
+
+  // Pula o ponto atual (usado também quando o tile não é andável).
+  function pularAtual(agora) {
+    const alvo = pontos[indice] || { x: 0, y: 0 };
+    pulados.add(indice);
+    tentativas = 0;
+    ultimaPos = null;
+    if (proximoNaoPulado()) {
+      desde = agora;
+      limite = null;
+      return {
+        ok: true,
+        acao: "pular",
+        alvo: alvo,
+        indice: indice,
+        restantes: pontos.length - pulados.size,
+      };
+    }
+    const espera = entrarEspera(agora);
+    return Object.assign({ ok: espera.acao === "sem_caminho", alvo: alvo }, espera);
+  }
+
   // Fecha a volta: repete do primeiro ponto ou conclui a rota.
   function fecharVolta(agora) {
     volta += 1;
+    pulados = new Set();
+    esperas = 0;
+    ultimaPos = null;
     const podeRepetir = cfg.repetir && (cfg.voltasMax === 0 || volta < cfg.voltasMax);
     if (!podeRepetir) {
       situacao = "concluida";
@@ -284,10 +376,19 @@ function criarRota(opcoes) {
     return { acao: "volta", volta: volta, total: pontos.length };
   }
 
-  // Retorna a decisão do tick: ir | repetir | esperar | avancar | volta | concluir | desistir
+  // Decisão do tick: ir | repetir | pular | sem_caminho | esperar | avancar | volta | concluir | desistir
   function passo(entrada) {
     const agora = entrada.agora;
     const pos = entrada.pos;
+
+    if (situacao === "esperando") {
+      if (agora < pausaAte) return { acao: "esperar", motivo: "sem-caminho" };
+      situacao = "andando";
+      desde = agora;
+      limite = null;
+      return { acao: "esperar", motivo: "recomeco" };
+    }
+
     if (situacao !== "andando") return null;
     if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
     if (finalizando) {
@@ -299,15 +400,25 @@ function criarRota(opcoes) {
     const alvo = pontos[indice];
     if (limite === null) limite = prazoDe(pos, alvo);
 
-    if (pos.x === alvo.x && pos.y === alvo.y) {
+    const exato = pos.x === alvo.x && pos.y === alvo.y;
+    let parado = false;
+    if (!ultimaPos || ultimaPos.x !== pos.x || ultimaPos.y !== pos.y) {
+      ultimaPos = { x: pos.x, y: pos.y };
+      paradoDesde = agora;
+    } else {
+      parado = agora - paradoDesde >= cfg.settleMs;
+    }
+    const perto = !exato && cheb(pos, alvo) <= cfg.raioChegada && parado;
+
+    if (exato || perto) {
       indice += 1;
       tentativas = 0;
       desde = agora;
       limite = null;
+      ultimaPos = null;
       if (alvo.pausaMs > 0) pausaAte = agora + alvo.pausaMs;
 
       if (indice >= pontos.length) {
-        // A pausa do último ponto também vale: só fecha a volta quando ela termina.
         if (agora < pausaAte) {
           finalizando = true;
           return { acao: "esperar", motivo: "pausa" };
@@ -315,18 +426,17 @@ function criarRota(opcoes) {
         return fecharVolta(agora);
       }
       if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
-      return { acao: "avancar", indice: indice, alvo: pontos[indice] };
+      return { acao: "avancar", indice: indice, alvo: pontos[indice], perto: perto, pos: pos };
     }
 
     if (agora - desde > limite) {
       tentativas += 1;
-      if (tentativas > cfg.tentativasMax) {
-        situacao = "desistiu";
-        return { acao: "desistir", indice: indice, tentativas: tentativas - 1 };
+      if (tentativas < cfg.pularApos) {
+        desde = agora;
+        limite = prazoDe(pos, alvo);
+        return { acao: "repetir", x: alvo.x, y: alvo.y, indice: indice, tentativa: tentativas };
       }
-      desde = agora;
-      limite = prazoDe(pos, alvo);
-      return { acao: "repetir", x: alvo.x, y: alvo.y, indice: indice, tentativa: tentativas };
+      return pularAtual(agora);
     }
 
     return { acao: "ir", x: alvo.x, y: alvo.y, indice: indice };
@@ -340,6 +450,7 @@ function criarRota(opcoes) {
     parar,
     passo,
     posicionar,
+    pularAtual,
     repetir,
     definirVolta,
     pontos: () => pontos.map((p) => ({ x: p.x, y: p.y, pausaMs: p.pausaMs })),
@@ -347,6 +458,8 @@ function criarRota(opcoes) {
     indice: () => indice,
     situacao: () => situacao,
     volta: () => volta,
+    pulados: () => Array.from(pulados),
+    esperas: () => esperas,
     alvo: () => (pontos[indice] ? { x: pontos[indice].x, y: pontos[indice].y } : null),
   };
 }
@@ -832,6 +945,23 @@ function criarPonteNavegador() {
     });
   }
 
+  function caminavel(x, y) {
+    const w = cru();
+    let m = null;
+    try {
+      if (typeof mapa !== "undefined") m = mapa;
+    } catch (e) {
+      m = null;
+    }
+    if (!m) m = w.mapa || null;
+    if (!m || typeof m.caminable !== "function") return true;
+    try {
+      return !!m.caminable(x, y);
+    } catch (e) {
+      return true;
+    }
+  }
+
   // Tarefas e missões do HUD (só leitura).
   function tarefas() {
     const w = cru();
@@ -846,7 +976,7 @@ function criarPonteNavegador() {
 
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, tarefas,
+    inventario, suprimentos, tarefas, caminavel,
   };
 }
 
@@ -882,6 +1012,7 @@ function criarMotor(opcoes) {
   let ultimoPersonagem = null;
   let ultimoMotivoParada = null;
   let trecho = null; // trecho atual: { destino, alvo }
+  let pisoRota = null;
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -921,18 +1052,24 @@ function criarMotor(opcoes) {
   function iniciarRota(pontos, origem, opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
-    if (!rota.iniciar(cfg.agora())) return 0;
+    const st = cfg.ponte.estado ? cfg.ponte.estado() : null;
+    const pos = st && st.pos ? st.pos : null;
+    if (!rota.iniciar(cfg.agora(), pos)) return 0;
     if (opcoes && Number.isInteger(opcoes.indice)) rota.posicionar(opcoes.indice);
     if (opcoes && Number.isInteger(opcoes.volta)) rota.definirVolta(opcoes.volta);
     modo = "rota";
     ultimoAlvo = "";
     trecho = null;
+    pisoRota = pos && Number.isInteger(pos.z) ? pos.z : null;
     ultimoMotivoParada = null;
+    const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
       origem: origem || "api",
       repetir: rota.repetir(),
       indice: rota.indice(),
+      proximo: alvo ? alvo.x + "," + alvo.y : "",
+      maisProximo: !(opcoes && Number.isInteger(opcoes.indice)),
       pontos: rota.pontos().map((p) => p.x + "," + p.y).join(";"),
     });
     return total;
@@ -955,6 +1092,7 @@ function criarMotor(opcoes) {
     seguindoId = null;
     ultimoAlvo = "";
     trecho = null;
+    pisoRota = null;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
     sessao.parada();
@@ -1012,8 +1150,29 @@ function criarMotor(opcoes) {
     }
 
     if (modo === "rota") {
+      // Escada/mapa mudou no meio da rota: o `ir` não atravessa piso.
+      if (st.pos && Number.isInteger(st.pos.z)) {
+        if (pisoRota === null) pisoRota = st.pos.z;
+        else if (st.pos.z !== pisoRota) {
+          registro.evento("rota_piso_mudou", { de: pisoRota, para: st.pos.z, pos: st.pos });
+          parar("piso");
+          return;
+        }
+      }
+
       const d = rota.passo({ pos: st.pos, agora: agora });
       if (!d) return;
+
+      if (d.acao === "ir" && cfg.ponte.caminavel && !cfg.ponte.caminavel(d.x, d.y)) {
+        const r = rota.pularAtual(agora);
+        registro.evento("rota_ponto_invalido", { alvo: d.x + "," + d.y, restantes: r.restantes });
+        if (!r.ok) {
+          registro.evento("rota_sem_caminho", { motivo: "invalido" });
+          cfg.ponte.enviar({ t: "parar" });
+        }
+        return;
+      }
+
       if (d.acao === "ir" || d.acao === "repetir") {
         const alvo = proximoTrecho({ x: d.x, y: d.y }, st.pos);
         enviarIr(alvo.x, alvo.y, d.acao === "repetir");
@@ -1023,6 +1182,17 @@ function criarMotor(opcoes) {
       if (d.acao === "avancar") {
         sessao.pontoConcluido();
         registro.evento("rota_avancar", { indice: d.indice, alvo: d.alvo, pos: st.pos });
+        return;
+      }
+      if (d.acao === "pular") {
+        registro.evento("rota_pulou", { alvo: d.alvo ? d.alvo.x + "," + d.alvo.y : "", indice: d.indice, restantes: d.restantes });
+        return;
+      }
+      if (d.acao === "sem_caminho") {
+        registro.evento("rota_sem_caminho", { esperaMs: d.esperaMs, esperas: d.esperas });
+        cfg.ponte.enviar({ t: "parar" });
+        ultimoAlvo = "";
+        trecho = null;
         return;
       }
       if (d.acao === "volta") {
@@ -1039,8 +1209,8 @@ function criarMotor(opcoes) {
         return;
       }
       if (d.acao === "desistir") {
-        registro.evento("rota_desistiu", { indice: d.indice, alvo: rota.alvo(), pos: st.pos });
-        parar("rota_desistiu");
+        registro.evento("rota_desistiu", { indice: d.indice, motivo: d.motivo || "", alvo: rota.alvo(), pos: st.pos });
+        parar(d.motivo === "sem_caminho" ? "sem_caminho" : "rota_desistiu");
       }
       return;
     }

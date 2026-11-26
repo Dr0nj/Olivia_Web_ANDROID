@@ -174,6 +174,23 @@ export function criarPonteNavegador() {
     });
   }
 
+  function caminavel(x, y) {
+    const w = cru();
+    let m = null;
+    try {
+      if (typeof mapa !== "undefined") m = mapa;
+    } catch (e) {
+      m = null;
+    }
+    if (!m) m = w.mapa || null;
+    if (!m || typeof m.caminable !== "function") return true;
+    try {
+      return !!m.caminable(x, y);
+    } catch (e) {
+      return true;
+    }
+  }
+
   // Tarefas e missões do HUD (só leitura).
   function tarefas() {
     const w = cru();
@@ -188,6 +205,6 @@ export function criarPonteNavegador() {
 
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, tarefas,
+    inventario, suprimentos, tarefas, caminavel,
   };
 }

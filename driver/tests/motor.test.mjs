@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { criarMotor } from "../src/motor.js";
 
-function cenario(inicial) {
+function cenario(inicial, opcoes) {
   let pos = Object.assign({}, inicial);
   let agora = 0;
   let alvo = null;
   const enviados = [];
+  const eventos = [];
+  const cfg = opcoes || {};
   const ponte = {
     enviados,
     estado: () => ({
@@ -20,11 +22,17 @@ function cenario(inicial) {
     enviar: (m) => { enviados.push(m); return true; },
     entidade: () => alvo,
   };
-  const motor = criarMotor({ ponte, agora: () => agora });
+  if (cfg.caminavel) ponte.caminavel = cfg.caminavel;
+  const motor = criarMotor({
+    ponte,
+    agora: () => agora,
+    log: { evento: (nome, dados) => eventos.push(Object.assign({ nome }, dados || {})) },
+  });
   return {
     motor,
     enviados,
-    mover(x, y) { pos = { x, y, z: 0 }; },
+    eventos,
+    mover(x, y, z) { pos = { x, y, z: z == null ? pos.z : z }; },
     passar(ms) { agora += ms; },
     definirAlvo(a) { alvo = a; },
   };
@@ -78,6 +86,44 @@ test("não repete o mesmo ir enquanto o personagem anda", () => {
   }
 
   assert.equal(c.enviados.filter((m) => m.t === "ir").length, 1, "repetiu o mesmo destino");
+});
+
+test("rota começa pelo waypoint mais próximo", () => {
+  const c = cenario({ x: 19, y: 0, z: 0 });
+  c.motor.iniciarRota([[0, 0], [20, 0]], "teste");
+  assert.equal(c.motor.rota.indice(), 1, "não escolheu o ponto mais próximo");
+
+  c.motor.tick();
+  const ir = c.enviados.find((m) => m.t === "ir");
+  assert.equal(ir.x, 20);
+  assert.equal(ir.y, 0);
+});
+
+test("ponto não andável é pulado e segue o próximo", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 }, {
+    caminavel: (x, y) => !(x === 0 && y === 5),
+  });
+  c.motor.iniciarRota([[0, 5], [0, 6]], "teste");
+
+  c.motor.tick();
+  assert.ok(c.eventos.some((e) => e.nome === "rota_ponto_invalido"), "não registrou o ponto inválido");
+  assert.equal(c.motor.rota.indice(), 1);
+
+  c.motor.tick();
+  const ir = c.enviados.find((m) => m.t === "ir");
+  assert.equal(ir.y, 6);
+});
+
+test("mudança de piso no meio da rota para o laço", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 });
+  c.motor.iniciarRota([[0, 8]], "teste");
+  c.motor.tick();
+
+  c.mover(0, 0, 1);
+  c.motor.tick();
+
+  assert.equal(c.motor.modo(), "parada");
+  assert.ok(c.eventos.some((e) => e.nome === "rota_piso_mudou"), "não registrou a troca de piso");
 });
 
 test("seguidor também anda em trechos curtos", () => {

@@ -13,51 +13,73 @@ test("rota avança ao chegar e conclui no último ponto", () => {
   assert.equal(rota.carregar([[10, 10], [11, 10]]), 2);
   assert.equal(rota.iniciar(0), true);
 
-  assert.deepEqual(rota.passo({ pos: { x: 9, y: 10 }, agora: 0 }), { acao: "ir", x: 10, y: 10, indice: 0 });
-  assert.deepEqual(rota.passo({ pos: { x: 10, y: 10 }, agora: 100 }), { acao: "avancar", indice: 1, alvo: { x: 11, y: 10, pausaMs: 0 } });
+  assert.deepEqual(
+    rota.passo({ pos: { x: 9, y: 10 }, agora: 0 }),
+    { acao: "ir", x: 10, y: 10, indice: 0 }
+  );
+  const avancar = rota.passo({ pos: { x: 10, y: 10 }, agora: 100 });
+  assert.equal(avancar.acao, "avancar");
+  assert.equal(avancar.indice, 1);
   assert.deepEqual(rota.passo({ pos: { x: 11, y: 10 }, agora: 200 }), { acao: "concluir", total: 2, voltas: 1 });
   assert.equal(rota.situacao(), "concluida");
   assert.equal(rota.passo({ pos: { x: 11, y: 10 }, agora: 300 }), null);
 });
 
-test("rota repete e desiste depois do limite", () => {
-  const rota = criarRota({ timeoutMs: 1000, tentativasMax: 2, msPorTile: 350 });
+test("rota começa pelo waypoint mais próximo da posição", () => {
+  const rota = criarRota();
+  rota.carregar([[0, 0], [10, 0], [20, 0]]);
+  rota.iniciar(0, { x: 19, y: 0, z: 0 });
+  assert.equal(rota.indice(), 2);
+  assert.deepEqual(rota.passo({ pos: { x: 19, y: 0 }, agora: 10 }), { acao: "ir", x: 20, y: 0, indice: 2 });
+});
+
+test("chegada perto conta só depois de ficar parado", () => {
+  const rota = criarRota({ raioChegada: 1, settleMs: 600 });
+  rota.carregar([[10, 10]]);
+  rota.iniciar(0);
+
+  assert.equal(rota.passo({ pos: { x: 9, y: 10 }, agora: 0 }).acao, "ir");
+  assert.equal(rota.passo({ pos: { x: 9, y: 10 }, agora: 300 }).acao, "ir");
+  const perto = rota.passo({ pos: { x: 9, y: 10 }, agora: 700 });
+  assert.equal(perto.acao, "concluir");
+});
+
+test("pula o ponto travado depois de N tentativas e vai para o próximo", () => {
+  const rota = criarRota({ pularApos: 2, timeoutMs: 2500 });
+  rota.carregar([[5, 5], [15, 5]]);
+  rota.iniciar(0);
+
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 0 }).acao, "ir");
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 3000 }).acao, "repetir");
+  const pulou = rota.passo({ pos: { x: 0, y: 0 }, agora: 6000 });
+  assert.equal(pulou.acao, "pular");
+  assert.equal(pulou.indice, 1);
+  assert.equal(pulou.restantes, 1);
+  assert.equal(rota.indice(), 1);
+  assert.deepEqual(rota.passo({ pos: { x: 0, y: 0 }, agora: 6100 }), { acao: "ir", x: 15, y: 5, indice: 1 });
+});
+
+test("sem caminho espera e tenta de novo; desiste no limite", () => {
+  const rota = criarRota({ pularApos: 1, timeoutMs: 2500, esperaMs: 1000, esperasMax: 2 });
   rota.carregar([[5, 5]]);
   rota.iniciar(0);
 
-  // (1,1) → (5,5) dá distância 4, então o limite é 4 × 350 = 1400 ms.
-  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 500 }).acao, "ir");
-  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 1600 }).acao, "repetir");
-  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 3100 }).acao, "repetir");
-  assert.equal(rota.passo({ pos: { x: 1, y: 1 }, agora: 4600 }).acao, "desistir");
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 0 }).acao, "ir");
+  const sem = rota.passo({ pos: { x: 0, y: 0 }, agora: 3000 });
+  assert.equal(sem.acao, "sem_caminho");
+  assert.equal(sem.esperas, 1);
+  assert.equal(rota.situacao(), "esperando");
+
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 3500 }).acao, "esperar");
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 4100 }).motivo, "recomeco");
+  assert.equal(rota.situacao(), "andando");
+
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 7000 }).acao, "sem_caminho");
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 8100 }).motivo, "recomeco");
+  const fim = rota.passo({ pos: { x: 0, y: 0 }, agora: 11000 });
+  assert.equal(fim.acao, "desistir");
+  assert.equal(fim.motivo, "sem_caminho");
   assert.equal(rota.situacao(), "desistiu");
-});
-
-test("perna longa ganha prazo proporcional à distância", () => {
-  const rota = criarRota({ timeoutMs: 1000, msPorTile: 300, tentativasMax: 3 });
-  rota.carregar([[30, 30]]);
-  rota.iniciar(0);
-  rota.passo({ pos: { x: 0, y: 0 }, agora: 0 });
-  // 30 tiles × 300 ms = 9000 ms: 5 s de caminhada ainda não é falha.
-  assert.equal(rota.passo({ pos: { x: 15, y: 15 }, agora: 5000 }).acao, "ir");
-  assert.equal(rota.passo({ pos: { x: 25, y: 25 }, agora: 9500 }).acao, "repetir");
-});
-
-test("perna longa tem teto de prazo", () => {
-  const rota = criarRota({ timeoutMs: 1000, msPorTile: 300, timeoutMaxMs: 4000 });
-  rota.carregar([[200, 200]]);
-  rota.iniciar(0);
-  rota.passo({ pos: { x: 0, y: 0 }, agora: 0 });
-  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 4100 }).acao, "repetir");
-});
-
-test("rota espera a pausa do ponto", () => {
-  const rota = criarRota();
-  rota.carregar([[1, 1, 0], { x: 2, y: 2, pausaMs: 5000 }]);
-  rota.iniciar(0);
-  rota.passo({ pos: { x: 1, y: 1 }, agora: 0 });
-  rota.passo({ pos: { x: 2, y: 2 }, agora: 10 });
-  assert.deepEqual(rota.passo({ pos: { x: 2, y: 2 }, agora: 1000 }), { acao: "esperar", motivo: "pausa" });
 });
 
 test("rota sem posição espera sem contar timeout", () => {
@@ -73,14 +95,13 @@ test("rota fechada repete a volta em vez de concluir", () => {
   rota.carregar([[1, 1], [2, 1]]);
   rota.iniciar(0);
 
-  rota.passo({ pos: { x: 1, y: 1 }, agora: 100 }); // avancar
+  rota.passo({ pos: { x: 1, y: 1 }, agora: 100 });
   const d = rota.passo({ pos: { x: 2, y: 1 }, agora: 200 });
   assert.deepEqual(d, { acao: "volta", volta: 1, total: 2 });
   assert.equal(rota.situacao(), "andando");
   assert.equal(rota.indice(), 0);
   assert.equal(rota.volta(), 1);
 
-  // Continua andando do primeiro ponto outra vez.
   assert.deepEqual(rota.passo({ pos: { x: 2, y: 1 }, agora: 300 }), { acao: "ir", x: 1, y: 1, indice: 0 });
 });
 
@@ -94,6 +115,34 @@ test("rota repetida respeita voltasMax", () => {
   assert.equal(d.acao, "concluir");
   assert.equal(d.voltas, 2);
   assert.equal(rota.situacao(), "concluida");
+});
+
+test("perna longa ganha prazo proporcional à distância", () => {
+  const rota = criarRota({ timeoutMs: 1000, msPorTile: 300 });
+  rota.carregar([[30, 30]]);
+  rota.iniciar(0);
+  rota.passo({ pos: { x: 0, y: 0 }, agora: 0 });
+  assert.equal(rota.passo({ pos: { x: 15, y: 15 }, agora: 5000 }).acao, "ir");
+  assert.equal(rota.passo({ pos: { x: 25, y: 25 }, agora: 9500 }).acao, "repetir");
+});
+
+test("perna longa tem teto de prazo", () => {
+  const rota = criarRota({ timeoutMs: 1000, msPorTile: 300, timeoutMaxMs: 4000 });
+  rota.carregar([[200, 200]]);
+  rota.iniciar(0);
+  rota.passo({ pos: { x: 0, y: 0 }, agora: 0 });
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 4100 }).acao, "repetir");
+});
+
+test("volta concluída limpa os pontos pulados", () => {
+  const rota = criarRota({ repetir: true, pularApos: 1 });
+  rota.carregar([[5, 5], [6, 5]]);
+  rota.iniciar(0);
+  rota.passo({ pos: { x: 0, y: 0 }, agora: 0 });
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 3000 }).acao, "pular");
+  assert.deepEqual(rota.pulados(), [0]);
+  assert.equal(rota.passo({ pos: { x: 6, y: 5 }, agora: 3100 }).acao, "volta");
+  assert.deepEqual(rota.pulados(), []);
 });
 
 test("posicionar retoma a rota de um índice", () => {

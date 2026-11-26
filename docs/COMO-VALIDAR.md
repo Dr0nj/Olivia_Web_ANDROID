@@ -92,6 +92,17 @@ visível e jogável). Para voltar, **Voltar**.
 Esperado no painel: `desafio 0/0 · ponto i/N · volta n · andando`; `pontos` sobe a cada
 waypoint e `voltas` a cada laço.
 
+**Regras de navegação (iguais às do desktop, adaptadas ao `ir`)**
+
+- **Iniciar** escolhe o waypoint **mais próximo** da posição atual. O log mostra
+  `rota_inicio` com `indice` e `proximo:`.
+- Chegada exata; se parar a 1 tile e ficar parado ~0,6 s, também conta (`chegou perto`).
+- **2 tentativas** sem progresso → **pula** o ponto (`rota_pulou`) e vai ao próximo.
+- Ponto **não andável** (`mapa.caminable`) é pulado na hora (`rota_ponto_invalido`).
+- Se **todos** falharem: `rota_sem_caminho`, espera 5 s e recomeça a volta (até 12 vezes).
+- Se o personagem **mudar de piso** no meio, para (`rota_piso_mudou`) — `ir` não sobe escada.
+- Volta concluída limpa os pulados e tenta todos de novo.
+
 Medir o `q` no fim (não em laço, cada chamada consome `f`/`w`):
 
 ```js

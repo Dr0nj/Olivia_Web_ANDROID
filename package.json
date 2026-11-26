@@ -1,6 +1,6 @@
 {
   "name": "olivia-web-android",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Olivia no cliente web do LOW, para Android.",

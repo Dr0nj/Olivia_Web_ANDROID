@@ -65,6 +65,10 @@ class Painel {
     private final CheckBox nao;
     private final CheckBox repetir;
     private final java.util.ArrayDeque<String> historico = new java.util.ArrayDeque<>();
+    private LinearLayout telaHub;
+    private LinearLayout telaRota;
+    private EditText campoRota;
+    private TextView textoRota;
     private String posAtual = "";
     private boolean recolhido = false;
 
@@ -100,16 +104,20 @@ class Painel {
 
         raiz.addView(corpo);
 
+        telaHub = new LinearLayout(ctx);
+        telaHub.setOrientation(LinearLayout.VERTICAL);
+        corpo.addView(telaHub);
+
         numeros = texto("tempo 00:00 · xp/h 0", 9.5f, Color.rgb(159, 179, 194), false);
         contadores = texto("pontos 0 · voltas 0 · mortes 0", 9.5f, Color.rgb(159, 179, 194), false);
         vida = texto("nv — · vida — · mana —", 9.5f, Color.rgb(159, 179, 194), false);
         suprimentos = texto("poções —", 9.5f, Color.rgb(159, 179, 194), false);
         desafio = texto("desafio 0/0 · parada", 9.5f, Color.rgb(207, 227, 242), false);
-        corpo.addView(numeros);
-        corpo.addView(contadores);
-        corpo.addView(vida);
-        corpo.addView(suprimentos);
-        corpo.addView(desafio);
+        telaHub.addView(numeros);
+        telaHub.addView(contadores);
+        telaHub.addView(vida);
+        telaHub.addView(suprimentos);
+        telaHub.addView(desafio);
 
         LinearLayout desafioLinha = linha();
         desafioLinha.setPadding(0, d(4), 0, 0);
@@ -138,14 +146,14 @@ class Painel {
         });
         desafioLinha.addView(repetir);
 
-        corpo.addView(desafioLinha);
+        telaHub.addView(desafioLinha);
 
         LinearLayout botoes = linha();
         botoes.setPadding(0, d(4), 0, 0);
-        botoes.addView(botao("Rota", v -> dialogoRota()));
+        botoes.addView(botao("Rota", v -> abrirTelaRota()));
         botoes.addView(botao("Seguir", v -> dialogoSeguir()));
         botoes.addView(botao("Parar", v -> acoes.parar()));
-        corpo.addView(botoes);
+        telaHub.addView(botoes);
 
         LinearLayout rodape = linha();
         rodape.setPadding(0, d(3), 0, 0);
@@ -156,7 +164,10 @@ class Painel {
         rodape.addView(botao("zerar", v -> acoes.zerar()));
         rodape.addView(botao("log", v -> dialogoLog()));
         rodape.addView(botao("web", v -> dialogoRecarregar()));
-        corpo.addView(rodape);
+        telaHub.addView(rodape);
+
+        telaRota = montarTelaRota();
+        corpo.addView(telaRota);
     }
 
     View raiz() {
@@ -166,6 +177,156 @@ class Painel {
         p.setMargins(d(4), d(4), 0, 0);
         raiz.setLayoutParams(p);
         return raiz;
+    }
+
+    private LinearLayout montarTelaRota() {
+        LinearLayout tela = new LinearLayout(ctx);
+        tela.setOrientation(LinearLayout.VERTICAL);
+
+        textoRota = texto("0 pontos", 9.5f, Color.rgb(207, 227, 242), false);
+        tela.addView(textoRota);
+
+        LinearLayout primeira = linha();
+        primeira.setPadding(0, d(4), 0, 0);
+        primeira.addView(botao("Marcar aqui", v -> marcarPontoAtual()));
+        primeira.addView(botao("Desfazer", v -> desfazerPonto()));
+        tela.addView(primeira);
+
+        campoRota = new EditText(ctx);
+        campoRota.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        campoRota.setTypeface(Typeface.MONOSPACE);
+        campoRota.setTextSize(10.5f);
+        campoRota.setMinLines(2);
+        campoRota.setMaxLines(4);
+        campoRota.setMinWidth(d(210));
+        campoRota.setHint("[[128,96],[130,99]]");
+        LinearLayout.LayoutParams pc = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pc.topMargin = d(4);
+        tela.addView(campoRota, pc);
+
+        LinearLayout linha1 = linha();
+        linha1.setPadding(0, d(3), 0, 0);
+        linha1.addView(botao("Salvar…", v -> dialogoSalvarRota()));
+        linha1.addView(botao("Abrir…", v -> dialogoRotasSalvas()));
+        linha1.addView(botao("Limpar", v -> limparRota()));
+        tela.addView(linha1);
+
+        LinearLayout linha2 = linha();
+        linha2.setPadding(0, d(3), 0, 0);
+        linha2.addView(botao("Iniciar", v -> iniciarRotaDaTela()));
+        linha2.addView(botao("Voltar", v -> voltarHub()));
+        tela.addView(linha2);
+
+        TextView dica = texto("Ande e toque em Marcar aqui; o último ponto deve ficar perto do primeiro.",
+                8.4f, Color.rgb(111, 138, 156), false);
+        dica.setPadding(0, d(3), 0, 0);
+        tela.addView(dica);
+
+        tela.setVisibility(View.GONE);
+        return tela;
+    }
+
+    private void abrirTelaRota() {
+        if (telaRota == null) return;
+        if (campoRota.getText().toString().trim().isEmpty()) {
+            String ultima = prefs.getString("rota", "");
+            if ("[[33000,32000]]".equals(ultima)) ultima = "";
+            campoRota.setText(ultima.isEmpty() ? posAtual : ultima);
+        }
+        atualizarTextoRota();
+        telaHub.setVisibility(View.GONE);
+        telaRota.setVisibility(View.VISIBLE);
+    }
+
+    private void voltarHub() {
+        if (telaRota == null) return;
+        telaRota.setVisibility(View.GONE);
+        telaHub.setVisibility(View.VISIBLE);
+    }
+
+    private void atualizarTextoRota() {
+        if (textoRota == null || campoRota == null) return;
+        int n;
+        try {
+            n = new JSONArray(campoRota.getText().toString().trim()).length();
+        } catch (Exception e) {
+            n = 0;
+        }
+        textoRota.setText(n + (n == 1 ? " ponto" : " pontos")
+                + (n == 0 ? " · ande e marque" : " · toque em Iniciar"));
+    }
+
+    private void limparRota() {
+        campoRota.setText("");
+        prefs.edit().remove("rota").apply();
+        atualizarTextoRota();
+    }
+
+    private void marcarPontoAtual() {
+        acoes.posicaoAtual(texto -> {
+            JSONArray lista;
+            try {
+                lista = new JSONArray(campoRota.getText().toString().trim());
+            } catch (Exception e) {
+                lista = new JSONArray();
+            }
+            try {
+                JSONArray ponto = new JSONArray(texto);
+                if (lista.length() > 0) {
+                    JSONArray ultimo = lista.optJSONArray(lista.length() - 1);
+                    if (ultimo != null
+                            && ultimo.optInt(0) == ponto.getInt(0)
+                            && ultimo.optInt(1) == ponto.getInt(1)) {
+                        nota("mesmo ponto do anterior");
+                        return;
+                    }
+                }
+                lista.put(ponto);
+                campoRota.setText(lista.toString());
+                campoRota.setSelection(campoRota.getText().length());
+                atualizarTextoRota();
+                nota("ponto " + ponto.getInt(0) + "," + ponto.getInt(1) + " marcado");
+            } catch (Exception e) {
+                nota("posição indisponível (fora do jogo?)");
+            }
+        });
+    }
+
+    private void desfazerPonto() {
+        JSONArray lista;
+        try {
+            lista = new JSONArray(campoRota.getText().toString().trim());
+        } catch (Exception e) {
+            nota("rota vazia");
+            return;
+        }
+        if (lista.length() == 0) {
+            nota("nada para desfazer");
+            return;
+        }
+        int x = lista.optJSONArray(lista.length() - 1) != null ? lista.optJSONArray(lista.length() - 1).optInt(0, -1) : -1;
+        int y = lista.optJSONArray(lista.length() - 1) != null ? lista.optJSONArray(lista.length() - 1).optInt(1, -1) : -1;
+        lista.remove(lista.length() - 1);
+        campoRota.setText(lista.toString());
+        campoRota.setSelection(campoRota.getText().length());
+        atualizarTextoRota();
+        nota("removeu " + x + "," + y);
+    }
+
+    private void iniciarRotaDaTela() {
+        String bruto = campoRota.getText().toString().trim();
+        try {
+            JSONArray lista = new JSONArray(bruto);
+            if (lista.length() == 0) throw new Exception("rota vazia");
+            String normal = lista.toString();
+            prefs.edit().putString("rota", normal).apply();
+            acoes.iniciarRota(normal, repetir.isChecked());
+            voltarHub();
+            nota("rota com " + lista.length() + " pontos" + (repetir.isChecked() ? " · repetindo" : ""));
+        } catch (Exception e) {
+            nota("rota inválida: " + e.getMessage());
+        }
     }
 
     void atualizar(JSONObject s) {
@@ -332,71 +493,6 @@ class Painel {
                 .show();
     }
 
-    private void dialogoRota() {
-        EditText campo = new EditText(ctx);
-        campo.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        campo.setTypeface(Typeface.MONOSPACE);
-        campo.setTextSize(11f);
-        campo.setMinLines(4);
-        campo.setMaxLines(9);
-        String ultima = prefs.getString("rota", "");
-        if ("[[33000,32000]]".equals(ultima)) ultima = "";
-        campo.setText(ultima.isEmpty() ? posAtual : ultima);
-        campo.setHint("[[128,96],[130,99]]");
-
-        Button aqui = botao("Adicionar a posição atual", v -> acoes.posicaoAtual(texto -> {
-            String atual = campo.getText().toString().trim();
-            String novo;
-            try {
-                JSONArray lista = atual.isEmpty() ? new JSONArray() : new JSONArray(atual);
-                JSONArray ponto = new JSONArray(texto);
-                lista.put(ponto);
-                novo = lista.toString();
-            } catch (Exception e) {
-                novo = atual;
-                nota("posição atual: " + texto);
-                return;
-            }
-            campo.setText(novo);
-            campo.setSelection(novo.length());
-        }));
-
-        LinearLayout botoesRota = linha();
-        botoesRota.addView(botao("Salvar como…", v -> dialogoSalvarRota(campo)));
-        botoesRota.addView(botao("Abrir…", v -> dialogoRotasSalvas(campo)));
-        botoesRota.addView(botao("Limpar", v -> {
-            campo.setText("");
-            prefs.edit().remove("rota").apply();
-        }));
-
-        LinearLayout caixa = new LinearLayout(ctx);
-        caixa.setOrientation(LinearLayout.VERTICAL);
-        caixa.setPadding(d(16), d(4), d(16), 0);
-        caixa.addView(campo);
-        caixa.addView(aqui);
-        caixa.addView(botoesRota);
-
-        new AlertDialog.Builder(ctx)
-                .setTitle("Rota (tiles)")
-                .setMessage("Lista de [x,y] ou {x,y,pausaMs}. Ande e vá adicionando pontos.")
-                .setView(caixa)
-                .setPositiveButton("Iniciar", (d, w) -> {
-                    String bruto = campo.getText().toString().trim();
-                    try {
-                        JSONArray lista = new JSONArray(bruto);
-                        if (lista.length() == 0) throw new Exception("rota vazia");
-                        String normal = lista.toString();
-                        prefs.edit().putString("rota", normal).apply();
-                        acoes.iniciarRota(normal, repetir.isChecked());
-                        nota("rota com " + lista.length() + " pontos" + (repetir.isChecked() ? " · repetindo" : ""));
-                    } catch (Exception e) {
-                        nota("rota inválida: " + e.getMessage());
-                    }
-                })
-                .setNegativeButton("Cancelar", null)
-                .show();
-    }
-
     private JSONObject lerRotas() {
         try {
             return new JSONObject(prefs.getString("rotas", "{}"));
@@ -405,7 +501,7 @@ class Painel {
         }
     }
 
-    private void dialogoSalvarRota(EditText campo) {
+    private void dialogoSalvarRota() {
         EditText nome = new EditText(ctx);
         nome.setTextSize(13f);
         nome.setSingleLine(true);
@@ -424,7 +520,7 @@ class Painel {
                     }
                     String json;
                     try {
-                        JSONArray lista = new JSONArray(campo.getText().toString().trim());
+                        JSONArray lista = new JSONArray(campoRota.getText().toString().trim());
                         if (lista.length() == 0) throw new Exception("vazia");
                         json = lista.toString();
                     } catch (Exception e) {
@@ -436,6 +532,7 @@ class Painel {
                         todas.put(n, json);
                         prefs.edit().putString("rotas", todas.toString()).apply();
                         nota("rota \"" + n + "\" salva (" + new JSONArray(json).length() + " pontos)");
+                        voltarHub();
                     } catch (Exception e) {
                         nota("não consegui salvar");
                     }
@@ -444,7 +541,7 @@ class Painel {
                 .show();
     }
 
-    private void dialogoRotasSalvas(EditText campo) {
+    private void dialogoRotasSalvas() {
         JSONObject todas = lerRotas();
         if (todas.length() == 0) {
             nota("nenhuma rota salva ainda");
@@ -458,12 +555,12 @@ class Painel {
 
         new AlertDialog.Builder(ctx)
                 .setTitle("Rotas salvas")
-                .setItems(nomes.toArray(new String[0]), (d, i) -> dialogoRotaSalva(nomes.get(i), campo))
+                .setItems(nomes.toArray(new String[0]), (d, i) -> dialogoRotaSalva(nomes.get(i)))
                 .setNegativeButton("Cancelar", null)
                 .show();
     }
 
-    private void dialogoRotaSalva(String nome, EditText campo) {
+    private void dialogoRotaSalva(String nome) {
         final String json = lerRotas().optString(nome, "");
         if (json.isEmpty()) {
             nota("rota vazia");
@@ -480,8 +577,9 @@ class Painel {
                 .setTitle(nome)
                 .setMessage(pontos + " pontos\n" + json)
                 .setPositiveButton("Usar", (d, w) -> {
-                    campo.setText(json);
-                    campo.setSelection(json.length());
+                    campoRota.setText(json);
+                    campoRota.setSelection(json.length());
+                    atualizarTextoRota();
                     nota("rota \"" + nome + "\" carregada");
                 })
                 .setNeutralButton("Apagar", (d, w) -> confirmarApagarRota(nome))

@@ -34,8 +34,9 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   checkbox no painel. Modo ensaio disponível por console.
 - **Rota**: waypoints em tiles (`[x,y]` ou `{x,y,pausaMs}`), chegada por posição real,
   timeout proporcional à distância, repetição ilimitada (“Repetir”), retomada após morte ou
-  reinjeção (mesmo piso e mesmo personagem). No painel: “Adicionar a posição atual”,
-  “Salvar como…”, “Abrir…” (lista de rotas salvas, usar/apagar) e “Limpar”.
+  reinjeção (mesmo piso e mesmo personagem). **Rota** troca o hub por uma tela de rota no
+  próprio painel: **Marcar aqui** enquanto anda, **Desfazer**, **Salvar…**, **Abrir…**
+  (lista de rotas nomeadas), **Limpar**, **Iniciar** e **Voltar**.
 - **Seguidor**: segue qualquer jogador (lista os visíveis por nome/ID), para a 1 tile e
   desiste se o alvo desaparecer por 5 s.
 - **Sessão**: tempo, xp/h (XP absoluto, sem ficar negativo ao subir de nível), pontos,

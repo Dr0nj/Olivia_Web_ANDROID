@@ -81,13 +81,13 @@ real visível.
 
 ## 9. Waypoints e rotas nomeadas no painel
 
-- Diálogo **Rota** agora tem **“Adicionar a posição atual”**: ande com o joystick e vá
-  anexando `[x,y]` à lista.
-- **Salvar como…** grava a rota com nome (ex.: `teste1`); **Abrir…** lista as rotas salvas
-  com **Usar / Apagar / Cancelar**; **Limpar** zera o campo e a última rota.
-- Verificado no emulador: montar `[[8,89]]`, salvar como `teste1`, limpar, abrir a lista,
-  usar e **Iniciar** — a rota rodou em laço (66 voltas rápidas de 1 ponto, `q=16`) e
-  **Parar** encerrou.
+- **Rota** troca o hub pela **tela de rota** dentro do próprio painel (sem popup): o jogo
+  continua visível e jogável, e dá para andar e tocar em **Marcar aqui** sem fechar nada.
+- **Desfazer** remove o último ponto; **Salvar…** grava com nome; **Abrir…** lista as rotas
+  com **Usar / Apagar / Cancelar**; **Limpar** zera; **Iniciar** volta ao hub já andando;
+  **Voltar** volta ao hub sem iniciar.
+- Verificado no emulador: marquei 2 pontos andando pelo mapa, iniciei a rota (3 pontos,
+  `q=16`), parei e voltei ao hub.
 - **Voltar** do Android minimiza o app em vez de sair do personagem (a sessão do cliente
   web não sobrevive a uma navegação para trás).
 

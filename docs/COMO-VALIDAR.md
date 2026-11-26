@@ -69,24 +69,27 @@ powershell -ExecutionPolicy Bypass -File tools\cdp-sessao.ps1 -WsUrl $u -Expr "J
 
 ## 3. Rota em laço (5 min)
 
-No painel: **Repetir** marcado → **Rota**.
+No painel: **Rota** — o painel troca para a **tela de rota** (não é popup; o jogo continua
+visível e jogável). Para voltar, **Voltar**.
 
 **Montar os pontos**
 
-1. Ande com o joystick até o primeiro canto e toque em **Adicionar a posição atual**.
-2. Ande até o próximo ponto e repita. O último ponto deve ficar perto do primeiro para a
-   volta fechar; se quiser pausa num ponto, edite-o como `{"x":123,"y":96,"pausaMs":5000}`.
-3. **Iniciar**. O personagem anda em trechos de até 6 tiles (o servidor ignora `ir` a mais
-   de 8) e, ao chegar no último ponto, começa a volta de novo (`volta` sobe no painel).
+1. Ande com o joystick/tap e toque em **Marcar aqui** a cada canto.
+2. O contador no topo mostra quantos pontos já tem; o campo mostra o JSON (`[x,y]`).
+3. O último ponto deve ficar perto do primeiro para a volta fechar; para pausa num ponto,
+   edite-o como `{"x":123,"y":96,"pausaMs":5000}`.
+4. **Iniciar** volta ao hub e começa a andar em trechos de até 6 tiles (o servidor ignora
+   `ir` a mais de 8). Ao chegar no último ponto, começa a volta de novo (`volta` sobe).
 
 **Guardar e escolher rotas**
 
-- **Salvar como…** → dá um nome (ex.: `scorpion`). Fica gravado no aparelho.
+- **Salvar…** → dá um nome (ex.: `scorpion`), grava no aparelho e volta ao hub.
 - **Abrir…** → lista as rotas salvas; toque numa para **Usar**, **Apagar** ou **Cancelar**.
-- **Limpar** esvazia o campo para montar outra.
-- A última rota usada também é recarregada ao abrir o diálogo.
+- **Limpar** esvazia o campo e a última rota.
+- **Desfazer** remove o último ponto marcado.
+- A última rota usada também é recarregada ao abrir a tela de rota.
 
-Esperado no painel: `desafio 0/0 · ponto i/2 · volta n · andando`; `pontos` sobe a cada
+Esperado no painel: `desafio 0/0 · ponto i/N · volta n · andando`; `pontos` sobe a cada
 waypoint e `voltas` a cada laço.
 
 Medir o `q` no fim (não em laço, cada chamada consome `f`/`w`):

@@ -186,12 +186,12 @@ test("aceita oferta de missão bônus e fecha o popup", () => {
   const bonus = enviados.find((m) => m.t === "bonus" && m.id === 55);
   assert.ok(bonus, "não aceitou o bônus: " + JSON.stringify(enviados));
   assert.equal(bonus.accion, "aceptar");
-  assert.equal(janela.Olivia.coletar.ligado(), true);
+  assert.equal(janela.Olivia.autoTarefas.ligado(), true);
 });
 
 test("com o automático desligado não mexe em task nem bônus", () => {
   const { janela, Red, enviados } = cenario();
-  janela.Olivia.coletar.definir(false);
+  janela.Olivia.autoTarefas.definir(false);
   const antes = enviados.length;
   Red.emitir("tareaRepetir", { id: 91 });
   Red.emitir("bonusOferta", { id: 92 });

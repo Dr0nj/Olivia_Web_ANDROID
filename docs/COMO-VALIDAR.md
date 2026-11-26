@@ -122,29 +122,21 @@ Esperado: `{"q":16,...}`. Se vier 80, ver §0.
 
 ## 4. Prêmios: tarefas e missões (2 min)
 
-O painel tem **Repetir task/missões e coletar** (ligado por padrão) e a linha
-`N prontos · M coletados`. Esse único switch liga a coleta, a repetição da task que
-finalizou e o aceite do bônus.
+O painel tem **Repetir tasks e aceitar missões** (ligado por padrão). Esse único switch:
+repete a task que finalizou (popup) e aceita a missão bônus. **Não coleta nada** — de
+propósito: o `cobrar` competia com a repetição e fechava a task.
 
-- **Tarefas** (as barras no topo): `estado 2` = concluída → o Olivia envia
-  `{t:"tarea", id, accion:"cobrar"}`.
-- **Missões** (`Hud.listaMisiones`): `estado 2` → `{t:"mision", id}`.
-- Espera 6 s entre lotes, tenta até 3 vezes por id e não insiste depois disso.
-- O log mostra `tarefa_coletada` / `missao_coletada`.
-
-Para conferir: complete uma tarefa/missão, deixe parado e veja o ouro/exp subir e o
-contador `coletados` aumentar. **Aceitar** missão nova continua sendo falar com o NPC
-(a oferta vem no diálogo dele); o Olivia só coleta o que já está concluído.
+Para conferir a coleta manual, use o próprio jogo (Tarefas/Missões); o Olivia não mexe.
 
 **Popup “Tarefa completa” (Repetir/Terminar)**
 
-Com **Repetir task/missões e coletar** ligado, quando o cliente abre o popup o Olivia
+Com **Repetir tasks e aceitar missões** ligado, quando o cliente abre o popup o Olivia
 **repete a task que acabou de finalizar** (usa o `id` do popup), fecha o diálogo pela função
 interna e envia `{t:"tarea", id, accion:"repetir"}` — sem clique sintético (não acende o
 bit 32). O log mostra `tarefa_completa`.
 
 O popup de **missão bônus** também é aceito sozinho (`{t:"bonus", accion:"aceptar", id}`) e
-o log mostra `bonus_aceito`. Com o switch desligado, a coleta e os popups ficam para você.
+o log mostra `bonus_aceito`. Com o switch desligado, os popups ficam para você.
 
 ## 5. Anti-bot em ensaio (2 min) — e o teste real
 

@@ -11,7 +11,6 @@ const ordem = [
   "rota",
   "seguidor",
   "suprimentos",
-  "tarefas",
   "antibot",
   "ponte",
   "motor",

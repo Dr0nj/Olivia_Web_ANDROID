@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
             @Override public void parar() { chamarJs("Olivia.parar()"); }
             @Override public void seguir(long id) { chamarJs("Olivia.seguir(" + id + ")"); }
             @Override public void ligarAntiBot(boolean ligado) { chamarJs("Olivia.antibot.definirLigado(" + ligado + ")"); }
-            @Override public void ligarColeta(boolean ligado) { chamarJs("Olivia.coletar.definir(" + ligado + ")"); }
+            @Override public void ligarAutoTarefas(boolean ligado) { chamarJs("Olivia.autoTarefas.definir(" + ligado + ")"); }
             @Override public void zerar() { chamarJs("Olivia.zerar()"); }
             @Override public void recarregar() { web.reload(); }
             @Override public void listarJogadores(final Painel.RetornoLista retorno) {

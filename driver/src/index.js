@@ -16,7 +16,6 @@ import { criarPainel } from "./painel.js";
 
   const CHAVE_ROTA = "ovw.rota.estado";
   const CHAVE_SESSAO = "ovw.sessao";
-  const CHAVE_COLETA = "ovw.coleta";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -54,7 +53,10 @@ import { criarPainel } from "./painel.js";
   });
 
   const motor = criarMotor({ ponte: ponte, log: registro });
-  restaurarColeta();
+
+  let autoTarefas = (function () {
+    try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
+  })();
 
   const antibot = criarAntiBot({
     ponte: ponte,
@@ -103,12 +105,6 @@ import { criarPainel } from "./painel.js";
     const s = motor.sessao.exportar();
     if (!s || !s.personagem) return;
     gravar(CHAVE_SESSAO, { em: Date.now(), estado: s });
-    if (motor.tarefas) gravar(CHAVE_COLETA, motor.tarefas.exportar());
-  }
-
-  function restaurarColeta() {
-    const guardado = ler(CHAVE_COLETA);
-    if (guardado && motor.tarefas) motor.tarefas.importar(guardado);
   }
 
   function restaurarSessao() {
@@ -184,7 +180,7 @@ import { criarPainel } from "./painel.js";
       sessao: motor.sessao.snapshot(),
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
-      coleta: motor.tarefas ? motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null) : null,
+      autoTarefas: { ligado: autoTarefas },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -202,7 +198,7 @@ import { criarPainel } from "./painel.js";
   // diálogo e envia o mesmo pacote do botão oficial (sem click sintético, bit 32).
   function aoTarefaCompleta(m) {
     if (!m || !m.id) return;
-    if (motor.tarefas && !motor.tarefas.ligado()) return; // usuário desligou o automático
+    if (!autoTarefas) return; // usuário desligou o automático
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
@@ -217,7 +213,7 @@ import { criarPainel } from "./painel.js";
   // Oferta de missão bônus (outro popup do cliente): aceita e fecha.
   function aoBonus(m) {
     if (!m || !m.id) return;
-    if (motor.tarefas && !motor.tarefas.ligado()) return;
+    if (!autoTarefas) return;
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
@@ -290,10 +286,12 @@ import { criarPainel } from "./painel.js";
     },
     seguir: function (id) { return motor.seguir(id); },
     jogadores: function () { return ponte.jogadores(); },
-    coletar: {
-      ligado: function () { return motor.tarefas.ligado(); },
-      definir: function (v) { motor.tarefas.definirLigado(v); },
-      estado: function () { return motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null); },
+    autoTarefas: {
+      ligado: function () { return autoTarefas; },
+      definir: function (v) {
+        autoTarefas = !!v;
+        try { localStorage.setItem("ovw.autoTarefas", autoTarefas ? "1" : "0"); } catch (e) { /* sem storage */ }
+      },
     },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },
@@ -302,12 +300,10 @@ import { criarPainel } from "./painel.js";
     zerar: function () {
       motor.sessao.reset();
       antibot.zerar();
-      if (motor.tarefas) motor.tarefas.zerar();
       rotaAtiva = false;
       try {
         localStorage.removeItem(CHAVE_ROTA);
         localStorage.removeItem(CHAVE_SESSAO);
-        localStorage.removeItem(CHAVE_COLETA);
       } catch (e) { /* sem storage */ }
       if (painel) painel.atualizar();
       publicar();

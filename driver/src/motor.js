@@ -5,7 +5,6 @@ import { criarHumano } from "./humano.js";
 import { criarRota } from "./rota.js";
 import { criarSeguidor } from "./seguidor.js";
 import { criarSuprimentos } from "./suprimentos.js";
-import { criarTarefas } from "./tarefas.js";
 
 export function criarMotor(opcoes) {
   const cfg = Object.assign({
@@ -25,7 +24,6 @@ export function criarMotor(opcoes) {
   const rota = cfg.rota || criarRota();
   const seguidor = cfg.seguidor || criarSeguidor();
   const suprimentos = cfg.suprimentos || criarSuprimentos();
-  const tarefas = cfg.tarefas || criarTarefas({ agora: cfg.agora });
 
   let modo = "parada"; // parada | rota | seguir
   let timer = null;
@@ -136,24 +134,6 @@ export function criarMotor(opcoes) {
       registro.evento("sessao_reset", { motivo: "personagem", personagem: st.nome });
     }
     if (st.nome) ultimoPersonagem = st.nome;
-
-    // Coleta de tarefas/missões concluídas roda mesmo parado.
-    if (cfg.ponte.tarefas) {
-      try {
-        const t = cfg.ponte.tarefas();
-        tarefas.passo({
-          tarefas: t.tarefas,
-          missoes: t.missoes,
-          agora: agora,
-          enviar: cfg.ponte.enviar,
-          aoEnviar: function (a) {
-            registro.evento(a.tipo === "m" ? "missao_coletada" : "tarefa_coletada", { id: a.id });
-          },
-        });
-      } catch (e) {
-        // coleta nunca derruba o motor
-      }
-    }
 
     if (modo === "parada") return;
     if (!st.emJogo || !st.vivo) {
@@ -292,7 +272,6 @@ export function criarMotor(opcoes) {
     sessao,
     humano,
     suprimentos,
-    tarefas,
     log: registro,
     seguindoId: () => seguindoId,
   };

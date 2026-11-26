@@ -91,7 +91,11 @@ real visível.
 - **Voltar** do Android minimiza o app em vez de sair do personagem (a sessão do cliente
   web não sobrevive a uma navegação para trás).
 
-## 10. Prêmios (tarefas e missões)
+## 10. Prêmios (tarefas e missões) — histórico
+
+> Histórico: a **coleta foi removida na 0.7.0** porque o `cobrar` competia com o popup de
+> repetição e fechava a task. Hoje o Olivia só repete a task do popup e aceita o bônus.
+> O texto abaixo registra o que foi validado antes da remoção.
 
 - Tarefa concluída (`Hud.listaTareas` com `estado 2`) → `{t:"tarea", id, accion:"cobrar"}`.
 - Missão concluída (`Hud.listaMisiones` com `estado 2`) → `{t:"mision", id}`.
@@ -131,15 +135,14 @@ real visível.
   diálogo, o Olivia fechou (`#hud .lo-dlg` = 0), registrou `tarefa_completa` e enviou
   `{t:"tarea", id:999, accion:"repetir"}` (+1 envio). Checkbox **Repetir task completa**
   no painel; desmarcado envia `terminar`.
-- **Pacote único “Repetir task/missões e coletar”** (0.6.3): um switch liga coleta +
-  **repetição da task que finalizou** + aceite de bônus. Ao vivo no emulador: apareceu o
-  popup **real** “Task complete: Bats (3/9 today)” (auto estava desligado por um teste);
-  cliquei em **Repeat** (a mesma ação que o Olivia envia) e a task voltou a `estado 1`
-  (`Bats 9/150`). Com o switch ligado, `tareaRepetir` → +1 envio e `bonusOferta` → +1 envio,
-  diálogos fechados; desligado, 0 envios.
-- **Anti-bot real**: o painel passou a mostrar `desafio 1/1` com uma janela real do servidor,
-  respondida sozinha (além do teste simulado em §13). Logs: `tarefa_completa`,
-  `bonus_aceito`, `antibot_resposta`.
+- **Pacote único “Repetir tasks e aceitar missões”** (0.7.0): a coleta foi **removida**.
+  Motivo: o `cobrar` da coleta competia com o popup de conclusão e fechava a task em vez de
+  repetir. Agora só existe `repetir` (task do popup) e `aceptar` (bônus). Ao vivo, o popup
+  real “Task complete: Bats (3/9 today)” voltou para `estado 1` ao repetir; com o switch
+  ligado, `tareaRepetir` → +1 envio e `bonusOferta` → +1 envio, diálogos fechados; desligado,
+  0 envios. Nenhum `accion:"cobrar"` nem `{t:"mision",id}` é enviado pelo Olivia.
+- **Anti-bot real**: o painel mostrou `desafio 1/1` com uma janela real do servidor,
+  respondida sozinha. Logs: `tarefa_completa`, `bonus_aceito`, `antibot_resposta`.
 - `q` continuou **16**.
 
 ## 13. Anti-bot: resposta real (não só ensaio)

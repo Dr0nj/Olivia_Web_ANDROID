@@ -153,7 +153,20 @@ Resultado: `Olivia.sessao.snapshot().antiBot` = 1, `janelas` = 1, log `antibot_r
 `EresBot.tocar("2")` → `{t:"chat", canal:"local", texto:"/ebr <id> 2"}`. Ou seja, o
 “Responder «Não»” funciona de verdade, não só no ensaio.
 
-## 14. Pendências
+## 14. Configurações, gráfico e ícone (0.8.0)
+
+- **⚙ Configurações** substitui o hub (como no desktop): **Pausas humanas** (checkbox) e
+  **Atraso entre waypoints…** (mesmo diálogo exato/aleatório), **Voltar**.
+- Pausa humana: liga/desliga no driver (`Olivia.pausaHumana`), persistida em
+  `localStorage.ovw.pausaHumana`; o motor deixa de pausar quando desligada.
+- **Gráfico**: sparkline nativo de xp/h (5 min) no topo do hub, com cartão arredondado,
+  degradê, grade e ponto atual. Sem DOM (o detector não vê).
+- **Ícone**: `navigator-pixel.ico` do desktop (boneco no carrinho) convertido para as 5
+  densidades (`mipmap-*`), confirmado no `aapt2 dump badging`.
+- Validado no emulador: tela de configurações abriu, checkbox alternou e refletiu no estado,
+  gráfico desenhou a curva da sessão.
+
+## 15. Pendências
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.7.0
+// @version      0.8.0
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -133,9 +133,20 @@ function criarHumano(opcoes) {
     intervaloMaxMs: 25 * 60000,
     pausaMinMs: 8000,
     pausaMaxMs: 20000,
+    ligado: true,
   }, opcoes || {});
 
   let proxima = null;
+
+  function definirLigado(v) {
+    cfg.ligado = !!v;
+    if (!cfg.ligado) {
+      proxima = null;
+      return cfg.ligado;
+    }
+    reiniciar();
+    return cfg.ligado;
+  }
 
   function entre(min, max) {
     const r = Math.min(0.999999, Math.max(0, cfg.aleatorio()));
@@ -147,6 +158,7 @@ function criarHumano(opcoes) {
   }
 
   function devePausar() {
+    if (!cfg.ligado) return 0;
     if (proxima === null) reiniciar();
     if (cfg.agora() < proxima) return 0;
     const ms = entre(cfg.pausaMinMs, cfg.pausaMaxMs);
@@ -157,6 +169,8 @@ function criarHumano(opcoes) {
   return {
     devePausar,
     reiniciar,
+    definirLigado,
+    ligado: () => cfg.ligado,
     atraso: (min, max) => entre(min, max),
     proximaEm: () => proxima,
   };
@@ -1432,6 +1446,11 @@ function criarPainel(opcoes) {
     try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
   })();
 
+  let pausaHumana = (function () {
+    try { return localStorage.getItem("ovw.pausaHumana") !== "0"; } catch (e) { return true; }
+  })();
+  motor.humano.definirLigado(pausaHumana);
+
   const antibot = criarAntiBot({
     ponte: ponte,
     ensaio: (function () {
@@ -1555,6 +1574,7 @@ function criarPainel(opcoes) {
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
       autoTarefas: { ligado: autoTarefas },
+      pausaHumana: { ligado: motor.humano.ligado() },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -1665,6 +1685,14 @@ function criarPainel(opcoes) {
       definir: function (v) {
         autoTarefas = !!v;
         try { localStorage.setItem("ovw.autoTarefas", autoTarefas ? "1" : "0"); } catch (e) { /* sem storage */ }
+      },
+    },
+    pausaHumana: {
+      ligado: function () { return motor.humano.ligado(); },
+      definir: function (v) {
+        pausaHumana = !!v;
+        motor.humano.definirLigado(pausaHumana);
+        try { localStorage.setItem("ovw.pausaHumana", pausaHumana ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
     },
     parar: function () { motor.parar("console"); },

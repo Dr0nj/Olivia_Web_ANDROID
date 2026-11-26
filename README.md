@@ -63,6 +63,12 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
     repetição e fechava a task);
   - desligado: os popups ficam para você.
 - **Humanização**: pausas longas de 8–20 s a cada 15–25 min (o seguidor não pausa).
+- **Configurações (⚙ no cabeçalho)**: tela separada, como no desktop, com **Pausas
+  humanas** (liga/desliga) e **Atraso entre waypoints…** (exato/aleatório, de/até). Volta
+  ao hub pelo **Voltar**.
+- **Gráfico**: sparkline nativo de **XP/h dos últimos 5 min** no topo do hub (cartão
+  arredondado, área com degradê, grade e ponto atual).
+- **Ícone**: o mesmo do Olivia desktop (o boneco no carrinho), em todas as densidades.
 - **Painel nativo** (fora do DOM, invisível para o detector): estado, contadores, vida,
   poções, botões Rota/Seguir/Parar, checkboxes “Responder «Não»” e “Repetir”, log de eventos.
 - **Presença**: enquanto anda, o app envia pares de teclas Shift (eventos confiáveis) para

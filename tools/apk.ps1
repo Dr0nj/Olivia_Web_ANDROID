@@ -33,22 +33,36 @@ New-Item -ItemType Directory -Force -Path $assets | Out-Null
 Copy-Item (Join-Path $raiz 'dist\olivia-web.user.js') (Join-Path $assets 'driver.js') -Force
 
 Write-Host '== limpeza' -ForegroundColor Cyan
-foreach ($pasta in @('classes', 'dex', 'base.apk', 'aligned.apk', 'olivia-web.apk')) {
+foreach ($pasta in @('classes', 'dex', 'base.apk', 'aligned.apk', 'olivia-web.apk', 'recursos.zip')) {
   $alvo = Join-Path $out $pasta
   if (Test-Path $alvo) { Remove-Item $alvo -Recurse -Force }
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $out 'classes'), (Join-Path $out 'dex') | Out-Null
 
 Write-Host '== recursos e manifesto' -ForegroundColor Cyan
-& (Join-Path $bt 'aapt2.exe') link `
-  -o (Join-Path $out 'base.apk') `
-  -I $jar `
-  --manifest (Join-Path $app 'src\main\AndroidManifest.xml') `
-  -A $assets `
-  --min-sdk-version 26 `
-  --target-sdk-version 36 `
-  --version-code 1 `
-  --version-name 0.3.0
+$versao = (Get-Content (Join-Path $raiz 'package.json') -Raw | ConvertFrom-Json).version
+$recursos = Join-Path $app 'src\main\res'
+$compilados = Join-Path $out 'recursos.zip'
+$aapt = @(
+  'link',
+  '-o', (Join-Path $out 'base.apk'),
+  '-I', $jar,
+  '--manifest', (Join-Path $app 'src\main\AndroidManifest.xml'),
+  '-A', $assets,
+  '--min-sdk-version', '26',
+  '--target-sdk-version', '36',
+  '--version-code', '1',
+  '--version-name', $versao
+)
+if (Test-Path $recursos) {
+  $arquivos = Get-ChildItem $recursos -Recurse -File -ErrorAction SilentlyContinue
+  if ($arquivos) {
+    & (Join-Path $bt 'aapt2.exe') compile --dir $recursos -o $compilados
+    if ($LASTEXITCODE -ne 0) { throw 'aapt2 compile falhou' }
+    $aapt += @('-R', $compilados)
+  }
+}
+& (Join-Path $bt 'aapt2.exe') @aapt
 if ($LASTEXITCODE -ne 0) { throw 'aapt2 link falhou' }
 
 Write-Host '== javac' -ForegroundColor Cyan

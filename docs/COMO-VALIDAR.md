@@ -48,7 +48,14 @@ detector passa a ver entrada recente. Sem isso, 15 `ir` seguidos acendem o 64.
 
 ## 2. Conferir estado e contadores (1 min)
 
-Painel deve mostrar: tempo, xp/h, pontos, voltas, mortes, nível, vida, mana, poções, desafio.
+Painel deve mostrar: tempo, xp/h, pontos, voltas, mortes, nível, vida, mana, poções, desafio
+e o **gráfico de xp/h dos últimos 5 min**. No cabeçalho: **⚙** (Configurações) e **≡**
+(recolher).
+
+Em **⚙**:
+- **Pausas humanas**: liga/desliga as pausas de 8–20 s a cada 15–25 min (não valem no seguir).
+- **Atraso entre waypoints…**: exato ou aleatório, `de`/`até` em segundos (0–60).
+- **Voltar** retorna ao hub.
 
 Pelo PC, com o WebView depurável (já habilitado):
 

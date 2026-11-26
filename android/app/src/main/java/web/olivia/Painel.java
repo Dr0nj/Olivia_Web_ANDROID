@@ -37,6 +37,7 @@ class Painel {
         void seguir(long id);
         void ligarAntiBot(boolean ligado);
         void ligarAutoTarefas(boolean ligado);
+        void ligarPausaHumana(boolean ligado);
         void zerar();
         void recarregar();
         void listarJogadores(RetornoLista retorno);
@@ -69,9 +70,14 @@ class Painel {
     private final java.util.ArrayDeque<String> historico = new java.util.ArrayDeque<>();
     private LinearLayout telaHub;
     private LinearLayout telaRota;
+    private LinearLayout telaConfig;
     private EditText campoRota;
     private TextView textoRota;
     private TextView atrasoResumo;
+    private TextView atrasoResumoConfig;
+    private CheckBox pausaHumana;
+    private Grafico grafico;
+    private long ultimoGrafico = 0;
     private String posAtual = "";
     private boolean recolhido = false;
 
@@ -91,6 +97,9 @@ class Painel {
         LinearLayout topo = linha();
         TextView titulo = texto("Olivia", 11.5f, Color.rgb(207, 227, 242), true);
         estado = texto("aguardando", 9.5f, Color.rgb(159, 179, 194), false);
+        TextView engrenagem = texto("⚙", 14f, Color.rgb(159, 179, 194), false);
+        engrenagem.setPadding(d(8), 0, d(2), 0);
+        engrenagem.setOnClickListener(v -> abrirConfig());
         TextView alternar = texto("≡", 15f, Color.rgb(159, 179, 194), false);
         alternar.setPadding(d(10), 0, d(2), 0);
         alternar.setOnClickListener(v -> {
@@ -102,6 +111,7 @@ class Painel {
         espaco.setLayoutParams(new LinearLayout.LayoutParams(0, 1, 1f));
         topo.addView(espaco);
         topo.addView(estado);
+        topo.addView(engrenagem);
         topo.addView(alternar);
         raiz.addView(topo);
 
@@ -117,6 +127,10 @@ class Painel {
         suprimentos = texto("poções —", 9.5f, Color.rgb(159, 179, 194), false);
         desafio = texto("desafio 0/0 · parada", 9.5f, Color.rgb(207, 227, 242), false);
         telaHub.addView(numeros);
+        grafico = new Grafico(ctx);
+        LinearLayout.LayoutParams pg = new LinearLayout.LayoutParams(d(236), d(46));
+        pg.topMargin = d(3);
+        telaHub.addView(grafico, pg);
         telaHub.addView(contadores);
         telaHub.addView(vida);
         telaHub.addView(suprimentos);
@@ -186,6 +200,49 @@ class Painel {
 
         telaRota = montarTelaRota();
         corpo.addView(telaRota);
+
+        telaConfig = montarTelaConfig();
+        corpo.addView(telaConfig);
+    }
+
+    private LinearLayout montarTelaConfig() {
+        LinearLayout tela = new LinearLayout(ctx);
+        tela.setOrientation(LinearLayout.VERTICAL);
+
+        tela.addView(texto("Configurações", 10.5f, Color.rgb(207, 227, 242), true));
+
+        pausaHumana = new CheckBox(ctx);
+        pausaHumana.setText("Pausas humanas");
+        pausaHumana.setTextSize(9.5f);
+        pausaHumana.setTextColor(Color.rgb(223, 231, 238));
+        pausaHumana.setChecked(prefs.getBoolean("pausaHumana", true));
+        pausaHumana.setPadding(0, d(2), 0, 0);
+        pausaHumana.setOnCheckedChangeListener((b, marcado) -> {
+            prefs.edit().putBoolean("pausaHumana", marcado).apply();
+            acoes.ligarPausaHumana(marcado);
+            nota(marcado ? "pausas humanas ligadas" : "pausas humanas desligadas");
+        });
+        tela.addView(pausaHumana);
+        tela.addView(texto("Pausas longas de 8–20 s a cada 15–25 min (não vale no seguir).",
+                8.5f, Color.rgb(111, 138, 156), false));
+
+        LinearLayout linhaAtraso = linha();
+        linhaAtraso.setPadding(0, d(5), 0, 0);
+        linhaAtraso.addView(botao("Atraso entre waypoints…", v -> dialogoAtraso()));
+        atrasoResumoConfig = texto("sem atraso", 9.5f, Color.rgb(159, 179, 194), false);
+        atrasoResumoConfig.setPadding(d(6), 0, 0, 0);
+        linhaAtraso.addView(atrasoResumoConfig);
+        tela.addView(linhaAtraso);
+        tela.addView(texto("Exato usa o \"de\"; aleatório sorteia entre \"de\" e \"até\".",
+                8.5f, Color.rgb(111, 138, 156), false));
+
+        LinearLayout volta = linha();
+        volta.setPadding(0, d(5), 0, 0);
+        volta.addView(botao("Voltar", v -> voltarHub()));
+        tela.addView(volta);
+
+        tela.setVisibility(View.GONE);
+        return tela;
     }
 
     View raiz() {
@@ -263,12 +320,22 @@ class Painel {
         }
         atualizarTextoRota();
         telaHub.setVisibility(View.GONE);
+        if (telaConfig != null) telaConfig.setVisibility(View.GONE);
         telaRota.setVisibility(View.VISIBLE);
+    }
+
+    private void abrirConfig() {
+        if (telaConfig == null) return;
+        telaHub.setVisibility(View.GONE);
+        if (telaRota != null) telaRota.setVisibility(View.GONE);
+        telaConfig.setVisibility(View.VISIBLE);
+        atualizarResumoAtraso();
     }
 
     private void voltarHub() {
         if (telaRota == null) return;
         telaRota.setVisibility(View.GONE);
+        if (telaConfig != null) telaConfig.setVisibility(View.GONE);
         telaHub.setVisibility(View.VISIBLE);
     }
 
@@ -295,15 +362,17 @@ class Painel {
     }
 
     private void atualizarResumoAtraso() {
-        if (atrasoResumo == null) return;
+        String resumo;
         if (!prefs.getBoolean("atrasoAtivo", false)) {
-            atrasoResumo.setText("sem atraso");
+            resumo = "sem atraso";
         } else if (prefs.getBoolean("atrasoAleatorio", false)) {
-            atrasoResumo.setText(segundos(prefs.getInt("atrasoMinMs", 1000))
-                    + "–" + segundos(prefs.getInt("atrasoMaxMs", 3000)) + " s");
+            resumo = segundos(prefs.getInt("atrasoMinMs", 1000))
+                    + "–" + segundos(prefs.getInt("atrasoMaxMs", 3000)) + " s";
         } else {
-            atrasoResumo.setText(segundos(prefs.getInt("atrasoMs", 1000)) + " s fixo");
+            resumo = segundos(prefs.getInt("atrasoMs", 1000)) + " s fixo";
         }
+        if (atrasoResumo != null) atrasoResumo.setText(resumo);
+        if (atrasoResumoConfig != null) atrasoResumoConfig.setText(resumo);
     }
 
     private EditText campoSegundos(int ms) {
@@ -548,6 +617,13 @@ class Painel {
                 contadores.setText("pontos " + sessao.optInt("pontos", 0)
                         + " · voltas " + sessao.optInt("voltas", 0)
                         + " · mortes " + sessao.optInt("mortes", 0));
+                if (grafico != null) {
+                    long agora = System.currentTimeMillis();
+                    if (agora - ultimoGrafico >= 5000) {
+                        ultimoGrafico = agora;
+                        grafico.adicionar((float) sessao.optLong("xpHora", 0));
+                    }
+                }
             }
 
             if (sup != null) {
@@ -566,6 +642,12 @@ class Painel {
             if (antibot != null) {
                 boolean ligado = antibot.optBoolean("ligado", true);
                 if (nao.isChecked() != ligado) nao.setChecked(ligado);
+            }
+
+            JSONObject pausa = s.optJSONObject("pausaHumana");
+            if (pausa != null) {
+                boolean lig = pausa.optBoolean("ligado", true);
+                if (pausaHumana.isChecked() != lig) pausaHumana.setChecked(lig);
             }
 
             if (autoTarefasJson != null) {

@@ -58,6 +58,11 @@ import { criarPainel } from "./painel.js";
     try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
   })();
 
+  let pausaHumana = (function () {
+    try { return localStorage.getItem("ovw.pausaHumana") !== "0"; } catch (e) { return true; }
+  })();
+  motor.humano.definirLigado(pausaHumana);
+
   const antibot = criarAntiBot({
     ponte: ponte,
     ensaio: (function () {
@@ -181,6 +186,7 @@ import { criarPainel } from "./painel.js";
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
       autoTarefas: { ligado: autoTarefas },
+      pausaHumana: { ligado: motor.humano.ligado() },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -291,6 +297,14 @@ import { criarPainel } from "./painel.js";
       definir: function (v) {
         autoTarefas = !!v;
         try { localStorage.setItem("ovw.autoTarefas", autoTarefas ? "1" : "0"); } catch (e) { /* sem storage */ }
+      },
+    },
+    pausaHumana: {
+      ligado: function () { return motor.humano.ligado(); },
+      definir: function (v) {
+        pausaHumana = !!v;
+        motor.humano.definirLigado(pausaHumana);
+        try { localStorage.setItem("ovw.pausaHumana", pausaHumana ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
     },
     parar: function () { motor.parar("console"); },

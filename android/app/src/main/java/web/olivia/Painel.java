@@ -157,7 +157,7 @@ class Painel {
         LinearLayout coleta = linha();
         coleta.setPadding(0, d(3), 0, 0);
         coletar = new CheckBox(ctx);
-        coletar.setText("Coletar tarefas/missões");
+        coletar.setText("Tarefas/missões auto");
         coletar.setTextSize(9.5f);
         coletar.setTextColor(Color.rgb(223, 231, 238));
         coletar.setChecked(prefs.getBoolean("coletar", true));
@@ -175,7 +175,7 @@ class Painel {
         LinearLayout taskLinha = linha();
         taskLinha.setPadding(0, d(2), 0, 0);
         repetirTask = new CheckBox(ctx);
-        repetirTask.setText("Repetir task completa");
+        repetirTask.setText("Repetir ao concluir");
         repetirTask.setTextSize(9.5f);
         repetirTask.setTextColor(Color.rgb(223, 231, 238));
         repetirTask.setChecked(prefs.getBoolean("repetirTask", true));

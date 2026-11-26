@@ -131,6 +131,10 @@ real visível.
   diálogo, o Olivia fechou (`#hud .lo-dlg` = 0), registrou `tarefa_completa` e enviou
   `{t:"tarea", id:999, accion:"repetir"}` (+1 envio). Checkbox **Repetir task completa**
   no painel; desmarcado envia `terminar`.
+- **Pacote único “Tarefas/missões auto”** (0.6.1): um switch liga coleta + popup de tarefa
+  + aceite de bônus; **Repetir ao concluir** escolhe repetir/terminar. Ao vivo: com auto
+  ligado, `tareaRepetir` → +1 envio e `bonusOferta` → +1 envio, diálogos fechados; com auto
+  desligado, 0 envios e o popup fica para o usuário. Logs: `tarefa_completa`, `bonus_aceito`.
 - `q` continuou **16**.
 
 ## 13. Pendências

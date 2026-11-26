@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.6.0
+// @version      0.6.1
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1731,7 +1731,7 @@ function criarPainel(opcoes) {
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
       coleta: motor.tarefas ? motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null) : null,
-      tarefaCompleta: { repetir: repetirTask },
+      tarefaCompleta: { ligado: motor.tarefas ? motor.tarefas.ligado() : true, repetir: repetirTask },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -1752,6 +1752,7 @@ function criarPainel(opcoes) {
   // o mesmo pacote do botão oficial (sem click sintético, que acenderia o bit 32).
   function aoTarefaCompleta(m) {
     if (!m || !m.id) return;
+    if (motor.tarefas && !motor.tarefas.ligado()) return; // usuário desligou o automático
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
@@ -1764,11 +1765,27 @@ function criarPainel(opcoes) {
     registro.evento("tarefa_completa", { id: m.id, accion: accion });
   }
 
+  // Oferta de missão bônus (outro popup do cliente): aceita e fecha.
+  function aoBonus(m) {
+    if (!m || !m.id) return;
+    if (motor.tarefas && !motor.tarefas.ligado()) return;
+    try {
+      const dialogos = document.querySelectorAll("#hud .lo-dlg");
+      const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
+      if (ultimo && typeof ultimo._cerrar === "function") ultimo._cerrar();
+    } catch (e) {
+      // sem diálogo aberto
+    }
+    ponte.enviar({ t: "bonus", accion: "aceptar", id: Number(m.id) });
+    registro.evento("bonus_aceito", { id: m.id });
+  }
+
   function subir() {
     if (!ponte.pronto()) return false;
     if (!assinado) assinado = antibot.assinar();
     if (!assinadoTarefa) {
       assinadoTarefa = ponte.aoReceber("tareaRepetir", aoTarefaCompleta);
+      ponte.aoReceber("bonusOferta", aoBonus);
     }
     if (!ligado) { motor.iniciar(); ligado = true; }
     return assinado && ligado;

@@ -181,6 +181,24 @@ test("fecha o popup de task completa e envia repetir ou terminar", () => {
   assert.equal(fim.accion, "terminar");
 });
 
+test("aceita oferta de missão bônus e fecha o popup", () => {
+  const { janela, Red, enviados } = cenario();
+  Red.emitir("bonusOferta", { id: 55, titulo: "Misión bonus", texto: "Mate 10 ratos" });
+  const bonus = enviados.find((m) => m.t === "bonus" && m.id === 55);
+  assert.ok(bonus, "não aceitou o bônus: " + JSON.stringify(enviados));
+  assert.equal(bonus.accion, "aceptar");
+  assert.equal(janela.Olivia.coletar.ligado(), true);
+});
+
+test("com o automático desligado não mexe em task nem bônus", () => {
+  const { janela, Red, enviados } = cenario();
+  janela.Olivia.coletar.definir(false);
+  const antes = enviados.length;
+  Red.emitir("tareaRepetir", { id: 91 });
+  Red.emitir("bonusOferta", { id: 92 });
+  assert.equal(enviados.length, antes, "enviou algo com o automático desligado");
+});
+
 test("não embrulha API nenhuma do cliente", () => {
   const { janela, Red, antes } = cenario();
   assert.equal(Red.enviar, antes.enviar);

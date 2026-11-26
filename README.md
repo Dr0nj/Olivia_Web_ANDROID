@@ -54,12 +54,13 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   voltas, mortes, paradas, desafios respondidos/janelas.
 - **Suprimentos**: poções de vida/mana, itens e ouro do inventário; consumo/hora e tempo
   restante estimado. “Itens” é a soma das quantidades na mochila (não os slots).
-- **Prêmios**: coleta sozinho tarefas e missões concluídas (`estado 2`):
-  `{t:"tarea", id, accion:"cobrar"}` e `{t:"mision", id}`. Checkbox “Coletar prêmios” no
-  painel e contador de prontos/coletados.
-- **Tarefa completa**: quando o cliente abre o popup **Repetir/Terminar**, o Olivia escolhe
-  conforme o checkbox **“Repetir task completa”**, **fecha o diálogo pela função interna**
-  (`_cerrar`, sem clique sintético) e envia `{t:"tarea", id, accion:"repetir"|"terminar"}`.
+- **Tarefas/missões auto** (checkbox): um pacote só para
+  - **coletar** tarefas e missões concluídas (`cobrar` / `{t:"mision",id}`),
+  - **popup “Tarefa completa”**: escolhe Repetir/Terminar (checkbox **Repetir ao concluir**),
+    fecha o diálogo pela função interna (`_cerrar`, sem clique sintético) e envia
+    `{t:"tarea", id, accion:"repetir"|"terminar"}`,
+  - **oferta de missão bônus**: aceita (`{t:"bonus", accion:"aceptar", id}`) e fecha.
+  Com o automático desligado, os popups ficam para você.
 - **Humanização**: pausas longas de 8–20 s a cada 15–25 min (o seguidor não pausa).
 - **Painel nativo** (fora do DOM, invisível para o detector): estado, contadores, vida,
   poções, botões Rota/Seguir/Parar, checkboxes “Responder «Não»” e “Repetir”, log de eventos.

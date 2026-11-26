@@ -1,0 +1,19 @@
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Artefatos locais
+node_modules/
+*.log
+*.jsonl
+.DS_Store
+Thumbs.db
+
+# Sessões e capturas do jogo (nunca versionar)
+capturas/
+work/

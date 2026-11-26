@@ -1,0 +1,236 @@
+// Motor: laço único que junta estado, rota/seguidor, humanização, sessão e anti-bot.
+import { criarLog } from "./log.js";
+import { criarSessao } from "./sessao.js";
+import { criarHumano } from "./humano.js";
+import { criarRota } from "./rota.js";
+import { criarSeguidor } from "./seguidor.js";
+import { criarSuprimentos } from "./suprimentos.js";
+
+export function criarMotor(opcoes) {
+  const cfg = Object.assign({
+    ponte: null,
+    intervaloMs: 250,
+    reenvioMs: 1200,
+    // O servidor ignora `ir` para destinos a mais de 8 tiles (medido ao vivo).
+    // Andamos em trechos de 6 para folga.
+    passoTiles: 6,
+    intervaloMinimoMs: 400,
+    agora: () => Date.now(),
+  }, opcoes || {});
+
+  const registro = cfg.log || criarLog();
+  const sessao = cfg.sessao || criarSessao({ agora: cfg.agora });
+  const humano = cfg.humano || criarHumano({ agora: cfg.agora });
+  const rota = cfg.rota || criarRota();
+  const seguidor = cfg.seguidor || criarSeguidor();
+  const suprimentos = cfg.suprimentos || criarSuprimentos();
+
+  let modo = "parada"; // parada | rota | seguir
+  let timer = null;
+  let ultimoEnvio = 0;
+  let ultimoAlvo = "";
+  let pausadoAte = 0;
+  let seguindoId = null;
+  let ultimoPersonagem = null;
+  let ultimoMotivoParada = null;
+  let trecho = null; // trecho atual: { destino, alvo }
+
+  function enviarIr(x, y, forcar) {
+    const agora = cfg.agora();
+    const chave = x + "," + y;
+    if (!forcar && chave === ultimoAlvo) return false;
+    if (!forcar && ultimoAlvo !== "" && agora - ultimoEnvio < cfg.intervaloMinimoMs) return false;
+    ultimoAlvo = chave;
+    ultimoEnvio = agora;
+    return cfg.ponte.enviar({ t: "ir", x: x, y: y });
+  }
+
+  // O servidor recusa um `ir` longe demais: manda um ponto intermediário
+  // sobre a reta até o waypoint e continua no próximo tick.
+  function trechoAte(destino, pos) {
+    if (!pos || !Number.isInteger(pos.x) || !Number.isInteger(pos.y)) return destino;
+    const dx = destino.x - pos.x;
+    const dy = destino.y - pos.y;
+    const d = Math.max(Math.abs(dx), Math.abs(dy));
+    if (d <= cfg.passoTiles) return destino;
+    return {
+      x: pos.x + Math.round((dx * cfg.passoTiles) / d),
+      y: pos.y + Math.round((dy * cfg.passoTiles) / d),
+    };
+  }
+
+  // Mantém o trecho atual até alcançá-lo: um `ir` a cada 6 tiles, não a cada tile.
+  function proximoTrecho(destino, pos) {
+    const chave = destino.x + "," + destino.y;
+    if (!trecho || trecho.destino !== chave) {
+      trecho = { destino: chave, alvo: trechoAte(destino, pos) };
+    } else if (pos && trecho.alvo.x === pos.x && trecho.alvo.y === pos.y) {
+      trecho.alvo = trechoAte(destino, pos);
+    }
+    return trecho.alvo;
+  }
+
+  function iniciarRota(pontos, origem, opcoes) {
+    const total = rota.carregar(pontos);
+    if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
+    if (!rota.iniciar(cfg.agora())) return 0;
+    if (opcoes && Number.isInteger(opcoes.indice)) rota.posicionar(opcoes.indice);
+    if (opcoes && Number.isInteger(opcoes.volta)) rota.definirVolta(opcoes.volta);
+    modo = "rota";
+    ultimoAlvo = "";
+    trecho = null;
+    ultimoMotivoParada = null;
+    registro.evento("rota_inicio", {
+      total: total,
+      origem: origem || "api",
+      repetir: rota.repetir(),
+      indice: rota.indice(),
+      pontos: rota.pontos().map((p) => p.x + "," + p.y).join(";"),
+    });
+    return total;
+  }
+
+  function seguir(id) {
+    seguindoId = String(id);
+    seguidor.seguir(seguindoId, cfg.agora());
+    modo = "seguir";
+    ultimoAlvo = "";
+    trecho = null;
+    registro.evento("seguir_inicio", { alvo: seguindoId });
+    return true;
+  }
+
+  function parar(motivo) {
+    modo = "parada";
+    rota.parar();
+    seguidor.parar();
+    seguindoId = null;
+    ultimoAlvo = "";
+    trecho = null;
+    ultimoMotivoParada = motivo || "pedido";
+    cfg.ponte.enviar({ t: "parar" });
+    sessao.parada();
+    registro.evento("parada", { motivo: ultimoMotivoParada });
+  }
+
+  function tick() {
+    const agora = cfg.agora();
+    const st = cfg.ponte.estado();
+    if (st.nome) sessao.personagem(st.nome);
+    if (st.xp !== null) sessao.xpAtual(st.xp);
+
+    if (st.nome && ultimoPersonagem && st.nome !== ultimoPersonagem) {
+      sessao.reset(st.nome);
+      registro.evento("sessao_reset", { motivo: "personagem", personagem: st.nome });
+    }
+    if (st.nome) ultimoPersonagem = st.nome;
+
+    if (modo === "parada") return;
+    if (!st.emJogo || !st.vivo) {
+      registro.evento("sessao_parada", { motivo: !st.emJogo ? "fora" : "morto", pos: st.pos });
+      sessao.morte();
+      parar(!st.emJogo ? "fora" : "morto");
+      return;
+    }
+
+    if (agora < pausadoAte) return;
+    // O seguidor não pausa: o alvo anda e a pausa humana perderia o alvo.
+    if (modo !== "seguir") {
+      const pausa = humano.devePausar();
+      if (pausa > 0) {
+        pausadoAte = agora + pausa;
+        cfg.ponte.enviar({ t: "parar" });
+        registro.evento("pausa_humana", { ms: pausa });
+        return;
+      }
+    }
+
+    if (modo === "rota") {
+      const d = rota.passo({ pos: st.pos, agora: agora });
+      if (!d) return;
+      if (d.acao === "ir" || d.acao === "repetir") {
+        const alvo = proximoTrecho({ x: d.x, y: d.y }, st.pos);
+        enviarIr(alvo.x, alvo.y, d.acao === "repetir");
+        if (d.acao === "repetir") registro.evento("rota_repetir", { indice: d.indice, tentativa: d.tentativa, alvo: d.x + "," + d.y, pos: st.pos });
+        return;
+      }
+      if (d.acao === "avancar") {
+        sessao.pontoConcluido();
+        registro.evento("rota_avancar", { indice: d.indice, alvo: d.alvo, pos: st.pos });
+        return;
+      }
+      if (d.acao === "volta") {
+        sessao.pontoConcluido();
+        sessao.voltaConcluida();
+        registro.evento("rota_volta", { volta: d.volta, total: d.total, pos: st.pos });
+        return;
+      }
+      if (d.acao === "concluir") {
+        sessao.pontoConcluido();
+        sessao.voltaConcluida();
+        registro.evento("rota_concluida", { total: d.total, voltas: d.voltas, pos: st.pos });
+        parar("rota_concluida");
+        return;
+      }
+      if (d.acao === "desistir") {
+        registro.evento("rota_desistiu", { indice: d.indice, alvo: rota.alvo(), pos: st.pos });
+        parar("rota_desistiu");
+      }
+      return;
+    }
+
+    if (modo === "seguir") {
+      const alvo = cfg.ponte.entidade(seguindoId);
+      const d = seguidor.passo({ alvo: alvo, pos: st.pos, agora: agora });
+      if (!d) return;
+      if (d.acao === "ir") {
+        const alvo = proximoTrecho({ x: d.x, y: d.y }, st.pos);
+        enviarIr(alvo.x, alvo.y, false);
+        return;
+      }
+      if (d.acao === "perdeu") {
+        registro.evento("seguir_perdeu", { alvo: d.alvo });
+        parar("alvo_perdido");
+      }
+    }
+  }
+
+  function iniciar() {
+    if (timer) return;
+    timer = setInterval(tick, cfg.intervaloMs);
+  }
+
+  function encerrar() {
+    if (timer) clearInterval(timer);
+    timer = null;
+  }
+
+  // Volta do segundo plano: reenvia o alvo atual em vez de ficar parado no cache.
+  function retomar() {
+    ultimoAlvo = "";
+    trecho = null;
+    pausadoAte = 0;
+    iniciar();
+  }
+
+  return {
+    iniciar,
+    encerrar,
+    retomar,
+    tick,
+    iniciarRota,
+    seguir,
+    parar,
+    modo: () => modo,
+    pausadoAte: () => pausadoAte,
+    pausaRestante: () => Math.max(0, pausadoAte - cfg.agora()),
+    ultimoMotivo: () => ultimoMotivoParada,
+    rota,
+    seguidor,
+    sessao,
+    humano,
+    suprimentos,
+    log: registro,
+    seguindoId: () => seguindoId,
+  };
+}

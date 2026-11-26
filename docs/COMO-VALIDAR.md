@@ -69,15 +69,25 @@ powershell -ExecutionPolicy Bypass -File tools\cdp-sessao.ps1 -WsUrl $u -Expr "J
 
 ## 3. Rota em laço (5 min)
 
-No painel: **Repetir** marcado → **Rota** → cole por exemplo `[[6,89],[12,89]]` (ajuste
-para tiles andáveis perto de você) → **Iniciar**.
+No painel: **Repetir** marcado → **Rota**.
 
-Esperado:
+**Montar os pontos**
 
-- o personagem anda em trechos de até 6 tiles (o servidor ignora `ir` a mais de 8);
-- ao chegar no último ponto, fecha a volta e continua (`volta` sobe no painel);
-- `pontos` sobe a cada waypoint; `voltas` a cada laço;
-- `desafio 0/0 · ponto i/2 · volta n · andando`.
+1. Ande com o joystick até o primeiro canto e toque em **Adicionar a posição atual**.
+2. Ande até o próximo ponto e repita. O último ponto deve ficar perto do primeiro para a
+   volta fechar; se quiser pausa num ponto, edite-o como `{"x":123,"y":96,"pausaMs":5000}`.
+3. **Iniciar**. O personagem anda em trechos de até 6 tiles (o servidor ignora `ir` a mais
+   de 8) e, ao chegar no último ponto, começa a volta de novo (`volta` sobe no painel).
+
+**Guardar e escolher rotas**
+
+- **Salvar como…** → dá um nome (ex.: `scorpion`). Fica gravado no aparelho.
+- **Abrir…** → lista as rotas salvas; toque numa para **Usar**, **Apagar** ou **Cancelar**.
+- **Limpar** esvazia o campo para montar outra.
+- A última rota usada também é recarregada ao abrir o diálogo.
+
+Esperado no painel: `desafio 0/0 · ponto i/2 · volta n · andando`; `pontos` sobe a cada
+waypoint e `voltas` a cada laço.
 
 Medir o `q` no fim (não em laço, cada chamada consome `f`/`w`):
 

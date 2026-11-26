@@ -20,6 +20,9 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -357,11 +360,21 @@ class Painel {
             campo.setText(novo);
             campo.setSelection(novo.length());
         }));
+
+        LinearLayout botoesRota = linha();
+        botoesRota.addView(botao("Salvar como…", v -> dialogoSalvarRota(campo)));
+        botoesRota.addView(botao("Abrir…", v -> dialogoRotasSalvas(campo)));
+        botoesRota.addView(botao("Limpar", v -> {
+            campo.setText("");
+            prefs.edit().remove("rota").apply();
+        }));
+
         LinearLayout caixa = new LinearLayout(ctx);
         caixa.setOrientation(LinearLayout.VERTICAL);
         caixa.setPadding(d(16), d(4), d(16), 0);
         caixa.addView(campo);
         caixa.addView(aqui);
+        caixa.addView(botoesRota);
 
         new AlertDialog.Builder(ctx)
                 .setTitle("Rota (tiles)")
@@ -379,6 +392,111 @@ class Painel {
                     } catch (Exception e) {
                         nota("rota inválida: " + e.getMessage());
                     }
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private JSONObject lerRotas() {
+        try {
+            return new JSONObject(prefs.getString("rotas", "{}"));
+        } catch (Exception e) {
+            return new JSONObject();
+        }
+    }
+
+    private void dialogoSalvarRota(EditText campo) {
+        EditText nome = new EditText(ctx);
+        nome.setTextSize(13f);
+        nome.setSingleLine(true);
+        nome.setHint("nome da rota");
+        int pad = d(16);
+        nome.setPadding(pad, pad, pad, pad);
+
+        new AlertDialog.Builder(ctx)
+                .setTitle("Salvar rota")
+                .setView(nome)
+                .setPositiveButton("Salvar", (d, w) -> {
+                    String n = nome.getText().toString().trim();
+                    if (n.isEmpty()) {
+                        nota("nome vazio");
+                        return;
+                    }
+                    String json;
+                    try {
+                        JSONArray lista = new JSONArray(campo.getText().toString().trim());
+                        if (lista.length() == 0) throw new Exception("vazia");
+                        json = lista.toString();
+                    } catch (Exception e) {
+                        nota("rota inválida: " + e.getMessage());
+                        return;
+                    }
+                    JSONObject todas = lerRotas();
+                    try {
+                        todas.put(n, json);
+                        prefs.edit().putString("rotas", todas.toString()).apply();
+                        nota("rota \"" + n + "\" salva (" + new JSONArray(json).length() + " pontos)");
+                    } catch (Exception e) {
+                        nota("não consegui salvar");
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void dialogoRotasSalvas(EditText campo) {
+        JSONObject todas = lerRotas();
+        if (todas.length() == 0) {
+            nota("nenhuma rota salva ainda");
+            return;
+        }
+
+        List<String> nomes = new ArrayList<>();
+        Iterator<String> chaves = todas.keys();
+        while (chaves.hasNext()) nomes.add(chaves.next());
+        java.util.Collections.sort(nomes);
+
+        new AlertDialog.Builder(ctx)
+                .setTitle("Rotas salvas")
+                .setItems(nomes.toArray(new String[0]), (d, i) -> dialogoRotaSalva(nomes.get(i), campo))
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void dialogoRotaSalva(String nome, EditText campo) {
+        final String json = lerRotas().optString(nome, "");
+        if (json.isEmpty()) {
+            nota("rota vazia");
+            return;
+        }
+        int pontos;
+        try {
+            pontos = new JSONArray(json).length();
+        } catch (Exception e) {
+            pontos = 0;
+        }
+
+        new AlertDialog.Builder(ctx)
+                .setTitle(nome)
+                .setMessage(pontos + " pontos\n" + json)
+                .setPositiveButton("Usar", (d, w) -> {
+                    campo.setText(json);
+                    campo.setSelection(json.length());
+                    nota("rota \"" + nome + "\" carregada");
+                })
+                .setNeutralButton("Apagar", (d, w) -> confirmarApagarRota(nome))
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void confirmarApagarRota(String nome) {
+        new AlertDialog.Builder(ctx)
+                .setTitle("Apagar \"" + nome + "\"?")
+                .setPositiveButton("Apagar", (d, w) -> {
+                    JSONObject todas = lerRotas();
+                    todas.remove(nome);
+                    prefs.edit().putString("rotas", todas.toString()).apply();
+                    nota("rota \"" + nome + "\" apagada");
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();

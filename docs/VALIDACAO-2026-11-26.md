@@ -79,11 +79,15 @@ real visível.
 - Teste: rota na volta 20 → HOME por 18 s → voltar → volta 22, `q = 16`.
   Nenhum bit 512 (página oculta com ações).
 
-## 9. Waypoints no painel
+## 9. Waypoints e rotas nomeadas no painel
 
 - Diálogo **Rota** agora tem **“Adicionar a posição atual”**: ande com o joystick e vá
-  anexando `[x,y]` à lista. Verificado: `[[6,89]]` → `[[33000,32000],[6,89]]` (a rota
-  antiga era lixo do desktop e foi removida na versão seguinte).
+  anexando `[x,y]` à lista.
+- **Salvar como…** grava a rota com nome (ex.: `teste1`); **Abrir…** lista as rotas salvas
+  com **Usar / Apagar / Cancelar**; **Limpar** zera o campo e a última rota.
+- Verificado no emulador: montar `[[8,89]]`, salvar como `teste1`, limpar, abrir a lista,
+  usar e **Iniciar** — a rota rodou em laço (66 voltas rápidas de 1 ponto, `q=16`) e
+  **Parar** encerrou.
 - **Voltar** do Android minimiza o app em vez de sair do personagem (a sessão do cliente
   web não sobrevive a uma navegação para trás).
 
@@ -91,4 +95,3 @@ real visível.
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).
-- Perfis de rota nomeados (importar/exportar).

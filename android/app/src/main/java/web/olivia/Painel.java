@@ -36,6 +36,7 @@ class Painel {
         void parar();
         void seguir(long id);
         void ligarAntiBot(boolean ligado);
+        void ligarColeta(boolean ligado);
         void zerar();
         void recarregar();
         void listarJogadores(RetornoLista retorno);
@@ -64,6 +65,8 @@ class Painel {
     private final TextView nota;
     private final CheckBox nao;
     private final CheckBox repetir;
+    private final CheckBox coletar;
+    private final TextView premios;
     private final java.util.ArrayDeque<String> historico = new java.util.ArrayDeque<>();
     private LinearLayout telaHub;
     private LinearLayout telaRota;
@@ -147,6 +150,24 @@ class Painel {
         desafioLinha.addView(repetir);
 
         telaHub.addView(desafioLinha);
+
+        LinearLayout coleta = linha();
+        coleta.setPadding(0, d(3), 0, 0);
+        coletar = new CheckBox(ctx);
+        coletar.setText("Coletar prêmios");
+        coletar.setTextSize(9.5f);
+        coletar.setTextColor(Color.rgb(223, 231, 238));
+        coletar.setChecked(prefs.getBoolean("coletar", true));
+        coletar.setPadding(0, 0, 0, 0);
+        coletar.setOnCheckedChangeListener((b, marcado) -> {
+            prefs.edit().putBoolean("coletar", marcado).apply();
+            acoes.ligarColeta(marcado);
+        });
+        coleta.addView(coletar);
+        premios = texto("0 prontos", 9.5f, Color.rgb(159, 179, 194), false);
+        premios.setPadding(d(8), 0, 0, 0);
+        coleta.addView(premios);
+        telaHub.addView(coleta);
 
         LinearLayout botoes = linha();
         botoes.setPadding(0, d(4), 0, 0);
@@ -337,6 +358,7 @@ class Painel {
             JSONObject jogo = s.optJSONObject("jogo");
             JSONObject antibot = s.optJSONObject("antibot");
             JSONObject sup = s.optJSONObject("suprimentos");
+            JSONObject coleta = s.optJSONObject("coleta");
 
             estado.setText("seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
                     ? "seguindo " + s.optString("seguir")
@@ -412,6 +434,15 @@ class Painel {
             if (antibot != null) {
                 boolean ligado = antibot.optBoolean("ligado", true);
                 if (nao.isChecked() != ligado) nao.setChecked(ligado);
+            }
+
+            if (coleta != null) {
+                boolean ligado = coleta.optBoolean("ligado", true);
+                if (coletar.isChecked() != ligado) coletar.setChecked(ligado);
+                int prontos = coleta.optInt("pendentesMissoes", 0) + coleta.optInt("pendentesTarefas", 0);
+                int feitos = coleta.optInt("missoes", 0) + coleta.optInt("tarefas", 0);
+                premios.setText(prontos + (prontos == 1 ? " pronto" : " prontos")
+                        + " · " + feitos + " coletado" + (feitos == 1 ? "" : "s"));
             }
 
             if (jogo != null && !jogo.optBoolean("emJogo", false)) {

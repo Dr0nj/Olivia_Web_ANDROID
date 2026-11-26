@@ -162,5 +162,32 @@ export function criarPonteNavegador() {
     return { vida: vida, mana: mana, itens: itens, oro: Number(inv.oro) || 0 };
   }
 
-  return { pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot, inventario, suprimentos };
+  function lista(itens) {
+    return (Array.isArray(itens) ? itens : []).map(function (x) {
+      return {
+        id: Number(x && x.id),
+        estado: Number(x && x.estado),
+        nome: (x && (x.nombre || x.texto)) || null,
+        meta: Number(x && x.meta) || 0,
+        avance: Number(x && (x.avance != null ? x.avance : x.matados)) || 0,
+      };
+    });
+  }
+
+  // Tarefas e missões do HUD (só leitura).
+  function tarefas() {
+    const w = cru();
+    const hud = w.Hud || {};
+    return {
+      tarefas: lista(hud.listaTareas),
+      missoes: lista(hud.listaMisiones),
+      pontosTarefa: Number(hud.puntosTarea) || 0,
+      pontosMissao: Number(hud.puntosMision) || 0,
+    };
+  }
+
+  return {
+    pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
+    inventario, suprimentos, tarefas,
+  };
 }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.3.0
+// @version      0.4.0
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -458,6 +458,128 @@ function criarSuprimentos(opcoes) {
 }
 
 
+// Coleta automática de tarefas e missões concluídas.
+//
+// Protocolo do cliente web:
+//   tarefa  estado 2 -> {t:"tarea", id, accion:"cobrar"}
+//   missão  estado 2 -> {t:"mision", id}
+// A resposta do servidor atualiza a lista; quando o estado sai de 2, conta como coletada.
+function criarTarefas(opcoes) {
+  const cfg = Object.assign({
+    agora: Date.now,
+    intervaloMs: 6000,
+    atrasoMs: 5000,
+    tentativasMax: 3,
+  }, opcoes || {});
+
+  let ligado = true;
+  let ultimo = 0;
+  let coletadasTarefas = 0;
+  let coletadasMissoes = 0;
+  const memoria = new Map(); // "t12" -> { estado, tentativas, ultima }
+
+  function registrar(tipo, lista, agora, acoes) {
+    (lista || []).forEach(function (item) {
+      if (!item || !Number.isFinite(item.id)) return;
+      const chave = tipo + item.id;
+      let m = memoria.get(chave);
+      if (!m) {
+        m = { estado: null, tentativas: 0, ultima: -Infinity };
+        memoria.set(chave, m);
+      }
+
+      if (m.estado !== item.estado) {
+        if (m.estado === 2 && item.estado !== 2) {
+          if (tipo === "m") coletadasMissoes += 1;
+          else coletadasTarefas += 1;
+        }
+        m.estado = item.estado;
+        if (item.estado === 2) {
+          m.tentativas = 0;
+          m.ultima = -Infinity;
+        }
+      }
+
+      if (item.estado !== 2) return;
+      if (m.tentativas >= cfg.tentativasMax) return;
+      if (agora - m.ultima < cfg.atrasoMs) return;
+
+      m.tentativas += 1;
+      m.ultima = agora;
+      acoes.push(tipo === "m"
+        ? { tipo: "m", id: item.id, mensagem: { t: "mision", id: item.id } }
+        : { tipo: "t", id: item.id, mensagem: { t: "tarea", id: item.id, accion: "cobrar" } });
+    });
+  }
+
+  // Missão/tarefa coletada some da lista: credita quem já teve envio e limpa a memória.
+  function fecharAusentes(presentes) {
+    memoria.forEach(function (m, chave) {
+      if (presentes.has(chave)) return;
+      if (m.estado === 2 && m.tentativas > 0) {
+        if (chave[0] === "m") coletadasMissoes += 1;
+        else coletadasTarefas += 1;
+      }
+      memoria.delete(chave);
+    });
+  }
+
+  // entrada: { tarefas: [], missoes: [], agora?, enviar?, aoEnviar? }
+  function passo(entrada) {
+    const dados = entrada || {};
+    const agora = Number.isFinite(dados.agora) ? dados.agora : cfg.agora();
+    if (!ligado) return [];
+    if (agora - ultimo < cfg.intervaloMs) return [];
+    ultimo = agora;
+
+    const acoes = [];
+    const presentes = new Set();
+    (dados.missoes || []).forEach(function (m) { if (m && Number.isFinite(m.id)) presentes.add("m" + m.id); });
+    (dados.tarefas || []).forEach(function (t) { if (t && Number.isFinite(t.id)) presentes.add("t" + t.id); });
+
+    registrar("m", dados.missoes, agora, acoes);
+    registrar("t", dados.tarefas, agora, acoes);
+    fecharAusentes(presentes);
+
+    acoes.forEach(function (a) {
+      try {
+        if (dados.enviar) dados.enviar(a.mensagem);
+        if (dados.aoEnviar) dados.aoEnviar(a);
+      } catch (e) {
+        // envio nunca derruba o motor
+      }
+    });
+    return acoes;
+  }
+
+  function pendentes(entrada) {
+    const dados = entrada || {};
+    const conta = function (lista) {
+      return (lista || []).filter(function (x) { return x && x.estado === 2; }).length;
+    };
+    return { tarefas: conta(dados.tarefas), missoes: conta(dados.missoes) };
+  }
+
+  return {
+    passo,
+    pendentes,
+    ligado: () => ligado,
+    definirLigado: (v) => { ligado = !!v; },
+    zerar: () => { coletadasTarefas = 0; coletadasMissoes = 0; memoria.clear(); },
+    snapshot: (entrada) => {
+      const p = pendentes(entrada);
+      return {
+        ligado: ligado,
+        tarefas: coletadasTarefas,
+        missoes: coletadasMissoes,
+        pendentesTarefas: p.tarefas,
+        pendentesMissoes: p.missoes,
+      };
+    },
+  };
+}
+
+
 // Anti-bot: responde "Não" na janela do servidor, com atraso aleatório e contagem.
 function criarAntiBot(opcoes) {
   const cfg = Object.assign({
@@ -689,7 +811,34 @@ function criarPonteNavegador() {
     return { vida: vida, mana: mana, itens: itens, oro: Number(inv.oro) || 0 };
   }
 
-  return { pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot, inventario, suprimentos };
+  function lista(itens) {
+    return (Array.isArray(itens) ? itens : []).map(function (x) {
+      return {
+        id: Number(x && x.id),
+        estado: Number(x && x.estado),
+        nome: (x && (x.nombre || x.texto)) || null,
+        meta: Number(x && x.meta) || 0,
+        avance: Number(x && (x.avance != null ? x.avance : x.matados)) || 0,
+      };
+    });
+  }
+
+  // Tarefas e missões do HUD (só leitura).
+  function tarefas() {
+    const w = cru();
+    const hud = w.Hud || {};
+    return {
+      tarefas: lista(hud.listaTareas),
+      missoes: lista(hud.listaMisiones),
+      pontosTarefa: Number(hud.puntosTarea) || 0,
+      pontosMissao: Number(hud.puntosMision) || 0,
+    };
+  }
+
+  return {
+    pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
+    inventario, suprimentos, tarefas,
+  };
 }
 
 
@@ -713,6 +862,7 @@ function criarMotor(opcoes) {
   const rota = cfg.rota || criarRota();
   const seguidor = cfg.seguidor || criarSeguidor();
   const suprimentos = cfg.suprimentos || criarSuprimentos();
+  const tarefas = cfg.tarefas || criarTarefas({ agora: cfg.agora });
 
   let modo = "parada"; // parada | rota | seguir
   let timer = null;
@@ -813,6 +963,24 @@ function criarMotor(opcoes) {
       registro.evento("sessao_reset", { motivo: "personagem", personagem: st.nome });
     }
     if (st.nome) ultimoPersonagem = st.nome;
+
+    // Coleta de tarefas/missões concluídas roda mesmo parado.
+    if (cfg.ponte.tarefas) {
+      try {
+        const t = cfg.ponte.tarefas();
+        tarefas.passo({
+          tarefas: t.tarefas,
+          missoes: t.missoes,
+          agora: agora,
+          enviar: cfg.ponte.enviar,
+          aoEnviar: function (a) {
+            registro.evento(a.tipo === "m" ? "missao_coletada" : "tarefa_coletada", { id: a.id });
+          },
+        });
+      } catch (e) {
+        // coleta nunca derruba o motor
+      }
+    }
 
     if (modo === "parada") return;
     if (!st.emJogo || !st.vivo) {
@@ -919,6 +1087,7 @@ function criarMotor(opcoes) {
     sessao,
     humano,
     suprimentos,
+    tarefas,
     log: registro,
     seguindoId: () => seguindoId,
   };
@@ -1319,6 +1488,7 @@ function criarPainel(opcoes) {
       sessao: motor.sessao.snapshot(),
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
+      coleta: motor.tarefas ? motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null) : null,
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -1388,6 +1558,11 @@ function criarPainel(opcoes) {
     },
     seguir: function (id) { return motor.seguir(id); },
     jogadores: function () { return ponte.jogadores(); },
+    coletar: {
+      ligado: function () { return motor.tarefas.ligado(); },
+      definir: function (v) { motor.tarefas.definirLigado(v); },
+      estado: function () { return motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null); },
+    },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },
     suspender: function () { motor.encerrar(); },
@@ -1395,6 +1570,7 @@ function criarPainel(opcoes) {
     zerar: function () {
       motor.sessao.reset();
       antibot.zerar();
+      if (motor.tarefas) motor.tarefas.zerar();
       rotaAtiva = false;
       try {
         localStorage.removeItem(CHAVE_ROTA);

@@ -42,7 +42,10 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **Sessão**: tempo, xp/h (XP absoluto, sem ficar negativo ao subir de nível), pontos,
   voltas, mortes, paradas, desafios respondidos/janelas.
 - **Suprimentos**: poções de vida/mana, itens e ouro do inventário; consumo/hora e tempo
-  restante estimado.
+  restante estimado. “Itens” é a soma das quantidades na mochila (não os slots).
+- **Prêmios**: coleta sozinho tarefas e missões concluídas (`estado 2`):
+  `{t:"tarea", id, accion:"cobrar"}` e `{t:"mision", id}`. Checkbox “Coletar prêmios” no
+  painel e contador de prontos/coletados.
 - **Humanização**: pausas longas de 8–20 s a cada 15–25 min (o seguidor não pausa).
 - **Painel nativo** (fora do DOM, invisível para o detector): estado, contadores, vida,
   poções, botões Rota/Seguir/Parar, checkboxes “Responder «Não»” e “Repetir”, log de eventos.

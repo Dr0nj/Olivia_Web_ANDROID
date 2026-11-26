@@ -102,7 +102,21 @@ Esperado: `{"q":16,...}`. Se vier 80, ver §0.
 
 ---
 
-## 4. Anti-bot em ensaio (2 min)
+## 4. Prêmios: tarefas e missões (2 min)
+
+O painel tem **Coletar prêmios** (ligado por padrão) e a linha `N prontos · M coletados`.
+
+- **Tarefas** (as barras no topo): `estado 2` = concluída → o Olivia envia
+  `{t:"tarea", id, accion:"cobrar"}`.
+- **Missões** (`Hud.listaMisiones`): `estado 2` → `{t:"mision", id}`.
+- Espera 6 s entre lotes, tenta até 3 vezes por id e não insiste depois disso.
+- O log mostra `tarefa_coletada` / `missao_coletada`.
+
+Para conferir: complete uma tarefa/missão, deixe parado e veja o ouro/exp subir e o
+contador `coletados` aumentar. **Aceitar** missão nova continua sendo falar com o NPC
+(a oferta vem no diálogo dele); o Olivia só coleta o que já está concluído.
+
+## 5. Anti-bot em ensaio (2 min)
 
 Sem esperar o servidor perguntar:
 
@@ -122,7 +136,7 @@ Teste real: deixe rodando até aparecer a janela; o painel deve mostrar
 
 ---
 
-## 5. Persistência e retomada (3 min)
+## 6. Persistência e retomada (3 min)
 
 1. Com a rota rodando, espere ~5 s e derrube o driver sem recarregar a página:
    no console, `Olivia.motor.encerrar()` — o painel para de atualizar e o `vigiar()`
@@ -137,7 +151,7 @@ a viver. Em outro piso o driver registra `rota_nao_retomada` (motivo `piso`) e n
 
 ---
 
-## 6. O que me mandar
+## 7. O que me mandar
 
 ```
 q no início:      16
@@ -148,7 +162,7 @@ log do painel:    últimas linhas
 aparelho:         Android xx / WebView xxx
 ```
 
-## 7. Sintomas → causa provável
+## 8. Sintomas → causa provável
 
 | Sintoma | Causa provável |
 |---|---|

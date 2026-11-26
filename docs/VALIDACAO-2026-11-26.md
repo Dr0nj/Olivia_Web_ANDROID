@@ -91,7 +91,19 @@ real visível.
 - **Voltar** do Android minimiza o app em vez de sair do personagem (a sessão do cliente
   web não sobrevive a uma navegação para trás).
 
-## 10. Pendências
+## 10. Prêmios (tarefas e missões)
+
+- Tarefa concluída (`Hud.listaTareas` com `estado 2`) → `{t:"tarea", id, accion:"cobrar"}`.
+- Missão concluída (`Hud.listaMisiones` com `estado 2`) → `{t:"mision", id}`.
+- Coleta automática ligada por padrão (checkbox **Coletar prêmios**), 6 s entre lotes,
+  até 3 tentativas por id.
+- Ao vivo: 2 missões concluídas (Gold 250/250 e EXP 150/150) foram coletadas sozinhas;
+  log `missao_coletada` ×2; ouro 766 → 1.094 e nível 6 → 7.
+- “Itens” no painel = soma das quantidades na mochila (flechas contam), não slots.
+- **Aceitar** missão nova não é automatizado: a oferta vem no diálogo do NPC; o Olivia
+  só coleta o que já está completo.
+
+## 11. Pendências
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).

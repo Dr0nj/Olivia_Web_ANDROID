@@ -171,6 +171,7 @@ import { criarPainel } from "./painel.js";
       sessao: motor.sessao.snapshot(),
       jogo: st,
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
+      coleta: motor.tarefas ? motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null) : null,
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -240,6 +241,11 @@ import { criarPainel } from "./painel.js";
     },
     seguir: function (id) { return motor.seguir(id); },
     jogadores: function () { return ponte.jogadores(); },
+    coletar: {
+      ligado: function () { return motor.tarefas.ligado(); },
+      definir: function (v) { motor.tarefas.definirLigado(v); },
+      estado: function () { return motor.tarefas.snapshot(ponte.tarefas ? ponte.tarefas() : null); },
+    },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },
     suspender: function () { motor.encerrar(); },
@@ -247,6 +253,7 @@ import { criarPainel } from "./painel.js";
     zerar: function () {
       motor.sessao.reset();
       antibot.zerar();
+      if (motor.tarefas) motor.tarefas.zerar();
       rotaAtiva = false;
       try {
         localStorage.removeItem(CHAVE_ROTA);

@@ -8,8 +8,10 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -51,6 +53,7 @@ class Painel {
         void ligarPausaHumana(boolean ligado);
         void ligarReconexao(boolean ligado);
         void ligarArea(boolean ligado);
+        void ligarRetarget(boolean ligado, int sqm);
         void ligarRtcSempre(boolean ligado);
         void otimizarArea();
         void zerar();
@@ -117,6 +120,8 @@ class Painel {
     private TextView atrasoResumoConfig;
     private CheckBox pausaHumana;
     private CheckBox area;
+    private CheckBox retarget;
+    private EditText retargetSqm;
     private CheckBox rtcSempre;
     private String posAtual = "";
     private boolean recolhido = false;
@@ -513,6 +518,47 @@ class Painel {
                 + "Hunt Assist (o alvo sozinho do jogo fica desligado).",
                 8.5f, Color.rgb(111, 138, 156), false));
 
+        retarget = new CheckBox(ctx);
+        estilizarCaixa(retarget);
+        retarget.setText("Re-target por distância");
+        retarget.setTextSize(9.5f);
+        retarget.setTextColor(Color.rgb(223, 231, 238));
+        retarget.setChecked(prefs.getBoolean("retarget", false));
+        retarget.setPadding(0, d(5), 0, 0);
+        LinearLayout linhaRetarget = linha();
+        linhaRetarget.setPadding(0, d(2), 0, 0);
+        linhaRetarget.addView(retarget);
+        tela.addView(linhaRetarget);
+
+        LinearLayout distanciaRetarget = linha();
+        distanciaRetarget.setPadding(0, d(1), 0, 0);
+        distanciaRetarget.addView(texto("Trocar quando o alvo passar de", 9.5f,
+                Color.rgb(159, 179, 194), false));
+        retargetSqm = new EditText(ctx);
+        retargetSqm.setInputType(InputType.TYPE_CLASS_NUMBER);
+        retargetSqm.setSingleLine(true);
+        retargetSqm.setTextSize(12f);
+        retargetSqm.setText(String.valueOf(prefs.getInt("retargetSqm", 6)));
+        retargetSqm.setLayoutParams(new LinearLayout.LayoutParams(d(44), ViewGroup.LayoutParams.WRAP_CONTENT));
+        retargetSqm.setEnabled(retarget.isChecked());
+        distanciaRetarget.addView(retargetSqm);
+        distanciaRetarget.addView(texto("sqm", 9.5f, Color.rgb(159, 179, 194), false));
+        tela.addView(distanciaRetarget);
+        tela.addView(texto("Se o alvo atual ficar mais longe que isso, escolhe o monstro mais\n"
+                + "próximo. Desligado por padrão. A otimização de área tem prioridade.",
+                8.5f, Color.rgb(111, 138, 156), false));
+        retarget.setOnCheckedChangeListener((b, marcado) -> {
+            retargetSqm.setEnabled(marcado);
+            salvarRetarget();
+        });
+        retargetSqm.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable s) {
+                if (retarget != null && retarget.isChecked()) salvarRetarget();
+            }
+        });
+
         rtcSempre = new CheckBox(ctx);
         estilizarCaixa(rtcSempre);
         rtcSempre.setText("Manter RTC sempre ligado");
@@ -878,6 +924,30 @@ class Painel {
         return prefs.getBoolean("rtcSempre", false);
     }
 
+    boolean retargetAtivo() {
+        return prefs.getBoolean("retarget", false);
+    }
+
+    int retargetSqmValor() {
+        return Math.max(1, Math.min(8, prefs.getInt("retargetSqm", 6)));
+    }
+
+    private void salvarRetarget() {
+        if (retarget == null || retargetSqm == null) return;
+        int sqm = 6;
+        try {
+            sqm = Integer.parseInt(retargetSqm.getText().toString().trim());
+        } catch (Exception ignorado) {
+        }
+        sqm = Math.max(1, Math.min(8, sqm));
+        prefs.edit()
+                .putBoolean("retarget", retarget.isChecked())
+                .putInt("retargetSqm", sqm)
+                .apply();
+        acoes.ligarRetarget(retarget.isChecked(), sqm);
+        nota(retarget.isChecked() ? "re-target ligado após " + sqm + " sqm" : "re-target desligado");
+    }
+
     /** Configuração do ponto de caça, no mesmo formato do driver (caca.js). */
     String cacaJson() {        JSONObject o = new JSONObject();
         try {
@@ -1163,12 +1233,12 @@ class Painel {
             statusValor.setTextColor(corStatus);
 
             String ponto = totalRota > 0
-                    ? "ponto " + indiceRota + "/" + totalRota
+                    ? "Waypoint " + indiceRota + "/" + totalRota
                     : "sem rota";
             if (alvoRota != null) {
                 ponto += " · " + alvoRota.optInt("x", 0) + "," + alvoRota.optInt("y", 0);
             }
-            statusLinha1.setText((nivel > 0 ? "nv " + nivel + " · " : "") + ponto);
+            statusLinha1.setText((nivel > 0 ? "Level " + nivel + " · " : "") + ponto);
 
             long duracao = sessao != null ? sessao.optLong("duracaoMs", 0) : 0;
             int voltas = sessao != null ? sessao.optInt("voltas", 0) : voltaRota;
@@ -1190,13 +1260,25 @@ class Painel {
             goldDetalhe.setText("agora " + numero(goldAgora));
 
             double minSup = sup != null ? sup.optDouble("restanteMin", -1) : -1;
-            if (sup != null && !sup.isNull("restanteMin") && minSup > 0) {
-                supValor.setText(tempoSuprimento(minSup));
+            String statusSup = sup != null ? sup.optString("status", "") : "";
+            String valorSup;
+            if (sup == null) {
+                valorSup = "—";
+            } else if (!sup.isNull("restanteMin") && minSup > 0) {
+                valorSup = tempoSuprimento(minSup);
+            } else if ("loot repõe".equals(statusSup)) {
+                valorSup = "loot repõe";
+            } else if ("esgotado".equals(statusSup)) {
+                valorSup = "esgotado";
+            } else if ("sem gasto recente".equals(statusSup)) {
+                valorSup = "sem gasto";
             } else {
-                supValor.setText("—");
+                valorSup = "coletando";
             }
-            long consumoHora = sup != null ? Math.round(sup.optDouble("consumoHora", 0)) : 0;
-            supDetalhe.setText(consumoHora > 0 ? numero(consumoHora) + "/h" : "coletando…");
+            supValor.setText(valorSup);
+            int potVida = sup != null ? sup.optInt("vida", 0) : 0;
+            int potMana = sup != null ? sup.optInt("mana", 0) : 0;
+            supDetalhe.setText("V " + potVida + " · M " + potMana);
 
             int tasks = sessao != null ? sessao.optInt("tasks", 0) : 0;
             taskValor.setText(numero(tasks));
@@ -1265,6 +1347,17 @@ class Painel {
             if (areaJson != null && area != null) {
                 boolean lig = areaJson.optBoolean("ligado", false);
                 if (area.isChecked() != lig) area.setChecked(lig);
+            }
+            JSONObject retargetJson = s.optJSONObject("retarget");
+            if (retargetJson != null && retarget != null) {
+                boolean lig = retargetJson.optBoolean("ligado", false);
+                if (retarget.isChecked() != lig) retarget.setChecked(lig);
+                if (retargetSqm != null && !retargetSqm.hasFocus()) {
+                    int sqm = Math.max(1, Math.min(8, retargetJson.optInt("sqm", 6)));
+                    if (!String.valueOf(sqm).equals(retargetSqm.getText().toString())) {
+                        retargetSqm.setText(String.valueOf(sqm));
+                    }
+                }
             }
             JSONObject rtcJson = s.optJSONObject("rtc");
             if (rtcJson != null && rtcSempre != null) {

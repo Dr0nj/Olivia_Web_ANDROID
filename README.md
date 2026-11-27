@@ -107,6 +107,9 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **RTC sempre ligado** (opcional em ⚙): se o jogo desligar o Hunt Assist, o Olivia
   religa usando `Asistente.aa.on` + `Asistente.mandarAA()` — a mesma API do botão RTC.
   Não interfere com o menu do jogo aberto e entra em backoff se o servidor recusar.
+- **Re-target por distância** (desligado por padrão): se o alvo atual passar de X sqm,
+  escolhe o monstro mais próximo. A **otimização de área tem prioridade** quando as duas
+  estão ligadas.
 - **Menus do jogo**: ao abrir opções/inventário/RTC/task, o Olivia **pausa os comandos**
   e para de varrer monstros/persistir estado; ao fechar, retoma o mesmo ponto. O watchdog
   do APK **não reinjeta mais o driver** enquanto a thread JS está ocupada num menu — era
@@ -115,8 +118,8 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **Configurações (⚙ no cabeçalho)**: tela separada com os interruptores **Responder
   «Não»**, **Repetir a rota (laço)**, **Repetir tasks e aceitar missões**, **Pausas
   humanas**, **Reconectar automaticamente**, **Atraso entre waypoints…** (exato/aleatório),
-  **Caça…** (ponto de caça), **Manter RTC ligado** e **Otimizar ataque em área**.
-  **Voltar** retorna ao hub.
+  **Caça…** (ponto de caça), **Manter RTC ligado**, **Re-target por distância** e
+  **Otimizar ataque em área**. **Voltar** retorna ao hub.
 - **Reconexão**: se o WebSocket cair em jogo, tenta `Red.conectar()` a cada 15 s e conta
   tentativas/sucessos (mesma ideia do AutoReconnect do desktop).
 - **Ataque em área**: **Otimizar ataque em área** (checkbox em ⚙) é a mesma lógica do
@@ -167,7 +170,7 @@ driver/src/                   motor JS
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   tarefas.js                  repetição de task + confirmação no HUD
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 138 testes (node --test)
+driver/tests/                 144 testes (node --test)
 dist/olivia-web.user.js       userscript gerado (única versão suportada)
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -182,7 +185,7 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 138 testes
+node --test driver\tests                 # 144 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 

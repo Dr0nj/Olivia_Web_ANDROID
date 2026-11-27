@@ -8,6 +8,7 @@ import { criarPainel } from "./painel.js";
 import { criarArea } from "./area.js";
 import { CACA_PADRAO } from "./caca.js";
 import { criarRtcSempre } from "./rtc.js";
+import { escolherRetarget, RETARGET_SQM_PADRAO } from "./retarget.js";
 import { criarTarefas } from "./tarefas.js";
 
 (function () {
@@ -22,6 +23,7 @@ import { criarTarefas } from "./tarefas.js";
   const CHAVE_SESSAO = "ovw.sessao";
   const CHAVE_CACA = "ovw.caca";
   const CHAVE_RTC = "ovw.rtcSempre";
+  const CHAVE_RETARGET = "ovw.retarget";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -110,6 +112,18 @@ import { criarTarefas } from "./tarefas.js";
   const area = criarArea();
   let areaAlvo = null;
   let areaMobs = 0;
+
+  let retarget = (function () {
+    const salvo = ler(CHAVE_RETARGET);
+    if (salvo && typeof salvo === "object") {
+      return {
+        ligado: !!salvo.ligado,
+        sqm: Math.max(1, Math.min(8, Number(salvo.sqm) || RETARGET_SQM_PADRAO)),
+      };
+    }
+    return { ligado: false, sqm: RETARGET_SQM_PADRAO };
+  })();
+  let retargetAlvo = null;
 
   // Seguir knight: fica na vaga da onda a 4 sqm e vira para o alvo.
   let ondaLigada = (function () {
@@ -258,9 +272,10 @@ import { criarTarefas } from "./tarefas.js";
     const sup = ponte.suprimentos ? ponte.suprimentos() : null;
     const agora = Date.now();
     if (sup) {
-      motor.suprimentos.registrar(sup.vida + sup.mana, agora);
+      motor.suprimentos.registrar(sup.pocoes || [], agora);
       motor.sessao.ouroAtual(sup.oro);
     }
+    const supResumo = sup ? motor.suprimentos.resumo(agora) : null;
     return {
       modo: motor.modo(),
       pausaUi: motor.pausaInterface(),
@@ -286,6 +301,7 @@ import { criarTarefas } from "./tarefas.js";
       pausaHumana: { ligado: motor.humano.ligado() },
       reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
       area: { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs },
+      retarget: { ligado: retarget.ligado, sqm: retarget.sqm, alvo: retargetAlvo, areaPrioridade: areaLigada },
       rtc: Object.assign({ ligado: rtcSempre }, rtc.estado()),
       onda: {
         ligado: ondaLigada,
@@ -294,8 +310,12 @@ import { criarTarefas } from "./tarefas.js";
       },
       suprimentos: sup
         ? Object.assign({}, sup, {
-          consumoHora: Math.round(motor.suprimentos.porHora(agora)),
-          restanteMin: motor.suprimentos.restanteMin(sup.vida + sup.mana, agora),
+          consumoHora: Math.round(supResumo.consumoHora || 0),
+          gastaHora: Math.round(supResumo.gastaHora || 0),
+          repoeHora: Math.round(supResumo.repoeHora || 0),
+          restanteMin: supResumo.restanteMin,
+          status: supResumo.status,
+          detalhes: supResumo.itens,
         })
         : null,
     };
@@ -423,6 +443,36 @@ import { criarTarefas } from "./tarefas.js";
     }
   }
 
+  // Re-target por distância: se o alvo atual ficou longe, pega o monstro mais
+  // próximo. A otimização de área tem prioridade e desliga esta regra.
+  function passoRetarget() {
+    if (!retarget.ligado || areaLigada || suspenso || document.hidden === true || !ponte.pronto()) return;
+    if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
+    const st = ponte.estado();
+    if (!st.emJogo || !st.vivo || !st.pos) return;
+    const atualId = ponte.objetivo();
+    if (atualId == null) return;
+    const atual = ponte.entidade(atualId);
+    if (!atual || atual.morto || !Number.isFinite(atual.x) || !Number.isFinite(atual.y)) return;
+    const escolha = escolherRetarget(
+      st.pos,
+      { id: atualId, x: atual.x, y: atual.y },
+      ponte.monstros(),
+      retarget.sqm
+    );
+    if (!escolha) return;
+    if (ponte.mirar(escolha.id)) {
+      retargetAlvo = escolha.id;
+      registro.evento("retarget_alvo", {
+        de: atualId,
+        para: escolha.id,
+        distancia: escolha.distancia,
+        antes: escolha.antes,
+        limite: retarget.sqm,
+      });
+    }
+  }
+
   function suspenderAutomacao(motivo) {
     const estavaRodando = motor.rodando();
     suspenso = true;
@@ -514,6 +564,7 @@ import { criarTarefas } from "./tarefas.js";
 
   setInterval(vigiarConexao, 5000);
   setInterval(passoArea, 700);
+  setInterval(passoRetarget, 700);
   // Confirmação/expiração das repetições de task (prazo de 5 s).
   setInterval(function () { tarefas.passo(); }, 1000);
   // RTC sempre ligado: verifica devagar e só age quando o cliente desligou.
@@ -616,6 +667,29 @@ import { criarTarefas } from "./tarefas.js";
       },
       estado: function () {
         return { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs, raio: 2.5 };
+      },
+    },
+    retarget: {
+      ligado: function () { return retarget.ligado; },
+      sqm: function () { return retarget.sqm; },
+      estado: function () {
+        return { ligado: retarget.ligado, sqm: retarget.sqm, alvo: retargetAlvo, areaPrioridade: areaLigada };
+      },
+      definir: function (ligado, sqm) {
+        retarget.ligado = !!ligado;
+        if (sqm !== undefined && Number.isFinite(Number(sqm))) {
+          retarget.sqm = Math.max(1, Math.min(8, Math.round(Number(sqm))));
+        }
+        gravar(CHAVE_RETARGET, retarget);
+        retargetAlvo = null;
+        registro.evento("retarget_config", {
+          ligado: retarget.ligado,
+          sqm: retarget.sqm,
+          areaPrioridade: areaLigada,
+        });
+        if (retarget.ligado && !areaLigada) passoRetarget();
+        publicar();
+        return { ligado: retarget.ligado, sqm: retarget.sqm };
       },
     },
     rtc: {

@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.6
+**Versão:** 0.9.7
 **Data:** 2026-11-27
-**Commit:** release v0.9.6
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.6
-**APK:** `android/app/build/olivia-web.apk` (137 KB)
+**Commit:** release v0.9.7
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.7
+**APK:** `android/app/build/olivia-web.apk` (145 KB)
 
 ## Validado
 
-- **138 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **144 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -18,6 +18,21 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.7 (suprimentos)
+
+1. **Estimativa por item**: vida e mana são medidas separadamente, com saída
+   (gasto) e entrada (loot) acumuladas na janela de 10 min.
+2. **Tempo restante pelo saldo líquido**: se o loot repõe o gasto, o card mostra
+   `loot repõe` em vez de ficar eternamente em `coletando`; se sobrar consumo
+   líquido, mostra a previsão de término.
+3. **Quantidade visível**: o detalhe do card mostra `V <vida> · M <mana>`.
+4. Compra/depósito grande (>20 de uma vez) reinicia a medição daquele item.
+5. **Re-target por distância** (desligado por padrão): se o alvo atual passar de X sqm,
+   escolhe o monstro mais próximo. A otimização de área tem prioridade quando as duas
+   estão ligadas.
+6. Visão geral: `nv` virou **Level** e `ponto` virou **Waypoint**.
+7. Ainda **não instalado nos emuladores**; aguardando teste ao vivo.
 
 ## Mudanças da 0.9.6 (repetição de task)
 

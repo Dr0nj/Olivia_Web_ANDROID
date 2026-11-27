@@ -278,17 +278,43 @@ export function criarPonteNavegador() {
     let vida = 0;
     let mana = 0;
     let itens = 0;
+    const pocoes = new Map();
 
     (Array.isArray(inv.mochila) ? inv.mochila : []).forEach(function (o) {
       if (!o) return;
       const qtd = Number(o.cant) || 0;
       itens += qtd;
       const nome = o.nombre || (tabela[o.objeto] && tabela[o.objeto][0]) || "";
-      if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) vida += qtd;
-      else if (/mana potion|poci[oó]n de man[aá]|po[cç][aã]o de man[aá]/i.test(nome)) mana += qtd;
+      let tipo = null;
+      if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) {
+        vida += qtd;
+        tipo = "vida";
+      } else if (/mana potion|poci[oó]n de man[aá]|po[cç][aã]o de man[aá]/i.test(nome)) {
+        mana += qtd;
+        tipo = "mana";
+      }
+      if (!tipo) return;
+      const chave = String(o.objeto != null ? o.objeto : nome);
+      const atual = pocoes.get(chave);
+      if (atual) {
+        atual.quantidade += qtd;
+      } else {
+        pocoes.set(chave, {
+          id: o.objeto != null ? o.objeto : nome,
+          nome: nome,
+          tipo: tipo,
+          quantidade: qtd,
+        });
+      }
     });
 
-    return { vida: vida, mana: mana, itens: itens, oro: Number(inv.oro) || 0 };
+    return {
+      vida: vida,
+      mana: mana,
+      itens: itens,
+      oro: Number(inv.oro) || 0,
+      pocoes: Array.from(pocoes.values()),
+    };
   }
 
   function caminavel(x, y) {

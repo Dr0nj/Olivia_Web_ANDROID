@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.6
+// @version      0.9.7
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1464,6 +1464,47 @@ function criarArea(opcoes) {
 }
 
 
+// Re-target por distância: se o alvo atual ficou a mais de N sqm, escolhe o
+// monstro mais próximo. A otimização de área tem prioridade e desliga esta regra
+// no index (areaLigada vence).
+const RETARGET_SQM_PADRAO = 6;
+
+function cheb(a, b) {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+/**
+ * Retorna null quando não deve trocar; ou {id,x,y,distancia,antes}.
+ * `atual` precisa ter x/y além do id. `limite` é em sqm (Chebyshev).
+ */
+function escolherRetarget(pos, atual, monstros, limite) {
+  if (!pos || !atual || !Number.isFinite(atual.x) || !Number.isFinite(atual.y)) return null;
+  const lim = Number.isFinite(Number(limite)) ? Number(limite) : RETARGET_SQM_PADRAO;
+  if (lim <= 0) return null;
+  const antes = cheb(pos, atual);
+  if (antes <= lim) return null;
+
+  let melhor = null;
+  let melhorDist = Infinity;
+  for (const m of Array.isArray(monstros) ? monstros : []) {
+    if (!m || m.id === atual.id || !Number.isFinite(m.x) || !Number.isFinite(m.y)) continue;
+    const d = cheb(pos, m);
+    if (d < melhorDist || (d === melhorDist && melhor && m.id < melhor.id)) {
+      melhor = m;
+      melhorDist = d;
+    }
+  }
+  if (!melhor || melhorDist >= antes) return null;
+  return {
+    id: melhor.id,
+    x: melhor.x,
+    y: melhor.y,
+    distancia: melhorDist,
+    antes: antes,
+  };
+}
+
+
 // Desvio local de monstro, inspirado no "occupied_detour" do WaypointController
 // do desktop: quando o personagem não sai do lugar, a célula da frente está
 // ocupada. Em vez de pular o waypoint, procura um vizinho andável que aproxime
@@ -1692,53 +1733,263 @@ function criarRtcSempre(opcoes) {
 }
 
 
-// Estimativa de consumo de suprimentos (poções/runas) a partir da contagem do inventário.
+// Estimativa de consumo de suprimentos por item, como o SupplyEstimator do
+// desktop. O total sozinho engana: poções de vida caem enquanto as de mana sobem
+// com loot, e o saldo agregado parece "sem consumo" para sempre.
+//
+// Cada amostra guarda o acumulado de saída (gasto) e entrada (loot). O tempo
+// restante usa o saldo líquido; se o loot repõe tudo, mostramos "loot repõe".
+const JANELA_MS = 10 * 60000;
+const MINIMO_MS = 30000;
+const MINIMO_CONSUMO = 3;
+const RECENTE_MS = 120000;
+const LOOT_MAX = 20;
+
 function criarSuprimentos(opcoes) {
   const cfg = Object.assign({
-    janelaMs: 10 * 60000,
-    minimoMs: 30000,
-    minimoConsumo: 3,
+    janelaMs: JANELA_MS,
+    minimoMs: MINIMO_MS,
+    minimoConsumo: MINIMO_CONSUMO,
+    recenteMs: RECENTE_MS,
+    lootMax: LOOT_MAX,
   }, opcoes || {});
 
-  let amostras = [];
+  let modo = "total";
+  let totalAmostras = [];
+  let ultimo = new Map();
+  const registros = new Map();
 
-  function registrar(contagem, agora) {
+  function chave(item) {
+    return String(item && item.id != null ? item.id : item && item.nome ? item.nome : "item");
+  }
+
+  function registrarTotal(contagem, agora) {
     if (!Number.isFinite(contagem)) return;
-    amostras.push({ t: agora, v: contagem });
+    modo = "total";
+    totalAmostras.push({ t: agora, v: contagem });
     const corte = agora - cfg.janelaMs * 2;
-    while (amostras.length && amostras[0].t < corte) amostras.shift();
+    while (totalAmostras.length && totalAmostras[0].t < corte) totalAmostras.shift();
   }
 
-  function janela(agora) {
-    return amostras.filter((a) => a.t >= agora - cfg.janelaMs);
+  // lista: [{id,nome,tipo,quantidade}] do inventário (poções).
+  function registrarItens(lista, agora) {
+    modo = "itens";
+    const atual = new Map();
+    (Array.isArray(lista) ? lista : []).forEach(function (item) {
+      if (!item) return;
+      const k = chave(item);
+      const q = Math.max(0, Number(item.quantidade) || 0);
+      const anterior = atual.get(k);
+      if (anterior) {
+        anterior.quantidade += q;
+      } else {
+        atual.set(k, {
+          id: item.id,
+          nome: item.nome || "",
+          tipo: item.tipo || "outro",
+          quantidade: q,
+        });
+      }
+    });
+
+    // Item que sumiu do inventário entra com 0 para detectar esgotamento.
+    for (const [k, h] of registros) {
+      if (!atual.has(k)) {
+        atual.set(k, { id: h.id, nome: h.nome, tipo: h.tipo, quantidade: 0 });
+      }
+    }
+
+    for (const [k, item] of atual) {
+      let h = registros.get(k);
+      if (!h) {
+        h = {
+          id: item.id,
+          nome: item.nome,
+          tipo: item.tipo,
+          quantidade: 0,
+          out: 0,
+          in: 0,
+          used: false,
+          lastLoss: 0,
+          samples: [],
+        };
+        registros.set(k, h);
+      }
+      const antes = ultimo.get(k);
+      if (antes != null) {
+        if (item.quantidade > antes) {
+          const delta = item.quantidade - antes;
+          if (delta > cfg.lootMax) {
+            // Compra/depósito: recomeça a medição desse item.
+            h.out = 0;
+            h.in = 0;
+            h.used = false;
+            h.lastLoss = 0;
+            h.samples = [];
+          } else {
+            h.in += delta;
+          }
+        } else if (item.quantidade < antes) {
+          h.out += antes - item.quantidade;
+          h.used = true;
+          h.lastLoss = agora;
+        }
+      }
+      h.id = item.id;
+      h.nome = item.nome || h.nome;
+      h.tipo = item.tipo || h.tipo;
+      h.quantidade = item.quantidade;
+      h.samples.push({ t: agora, out: h.out, in: h.in });
+      const corte = agora - cfg.janelaMs * 2;
+      while (h.samples.length && h.samples[0].t < corte) h.samples.shift();
+    }
+
+    ultimo = new Map();
+    for (const [k, item] of atual) ultimo.set(k, item.quantidade);
   }
 
-  // Unidades por hora; 0 quando ainda não há base suficiente.
-  function porHora(agora) {
-    const j = janela(agora);
+  function registrar(valor, agora) {
+    if (typeof valor === "number") registrarTotal(valor, agora);
+    else registrarItens(valor, agora);
+  }
+
+  function resumo(agora) {
+    if (modo === "total") {
+      const taxa = porHoraTotal(agora);
+      return {
+        itens: [],
+        quantidade: totalAmostras.length ? totalAmostras[totalAmostras.length - 1].v : 0,
+        consumoHora: taxa,
+        gastaHora: taxa,
+        repoeHora: 0,
+        restanteMin: restanteTotal(agora),
+        status: taxa > 0 ? "estimado" : "coletando dados",
+      };
+    }
+
+    const itens = [];
+    let quantidade = 0;
+    let limite = null;
+    let gasto = 0;
+    let reposto = 0;
+    let temLoot = false;
+    let temEsgotado = false;
+    let temColetando = false;
+
+    for (const h of registros.values()) {
+      const janela = h.samples.filter((a) => a.t >= agora - cfg.janelaMs);
+      const primeiro = janela[0];
+      const ultimoItem = janela[janela.length - 1];
+      const elapsed = primeiro && ultimoItem ? ultimoItem.t - primeiro.t : 0;
+      const spent = primeiro && ultimoItem ? h.out - primeiro.out : 0;
+      const gained = primeiro && ultimoItem ? h.in - primeiro.in : 0;
+      const net = spent - gained;
+      const gastoHora = elapsed > 0 ? spent * 60000 / elapsed : 0;
+      const repoeHora = elapsed > 0 ? gained * 60000 / elapsed : 0;
+
+      let status;
+      let restanteMin = null;
+      if (h.quantidade === 0 && h.used) {
+        status = "esgotado";
+        restanteMin = 0;
+        temEsgotado = true;
+      } else if (h.used && agora - h.lastLoss > cfg.recenteMs) {
+        status = "sem gasto recente";
+      } else if (elapsed < cfg.minimoMs || spent < cfg.minimoConsumo) {
+        status = "coletando dados";
+        temColetando = true;
+      } else if (net <= 0) {
+        status = "loot repõe";
+        temLoot = true;
+      } else {
+        status = "estimado";
+        const porMinuto = net / (elapsed / 60000);
+        restanteMin = porMinuto > 0 ? h.quantidade / porMinuto : null;
+        if (restanteMin !== null && (limite === null || restanteMin < limite)) {
+          limite = restanteMin;
+        }
+      }
+
+      quantidade += h.quantidade;
+      gasto += gastoHora;
+      reposto += repoeHora;
+      itens.push({
+        id: h.id,
+        nome: h.nome,
+        tipo: h.tipo,
+        quantidade: h.quantidade,
+        status: status,
+        gastaHora: gastoHora,
+        repoeHora: repoeHora,
+        restanteMin: restanteMin,
+      });
+    }
+
+    let status = "coletando dados";
+    if (temEsgotado) status = "esgotado";
+    else if (limite !== null) status = "estimado";
+    else if (temLoot) status = "loot repõe";
+    else if (!temColetando && itens.length && itens.every((i) => i.status === "sem gasto recente")) {
+      status = "sem gasto recente";
+    }
+
+    return {
+      itens: itens,
+      quantidade: quantidade,
+      consumoHora: Math.max(0, gasto - reposto),
+      gastaHora: gasto,
+      repoeHora: reposto,
+      restanteMin: limite,
+      status: status,
+    };
+  }
+
+  function porHoraTotal(agora) {
+    const j = totalAmostras.filter((a) => a.t >= agora - cfg.janelaMs);
     if (j.length < 2) return 0;
-    const primeira = j[0];
-    const ultima = j[j.length - 1];
-    const span = ultima.t - primeira.t;
-    const consumo = primeira.v - ultima.v;
+    const span = j[j.length - 1].t - j[0].t;
+    const consumo = j[0].v - j[j.length - 1].v;
     if (span < cfg.minimoMs || consumo < cfg.minimoConsumo) return 0;
     return (consumo / span) * 3600000;
   }
 
-  function restanteMin(contagem, agora) {
-    const taxa = porHora(agora);
+  function restanteTotal(agora) {
+    const taxa = porHoraTotal(agora);
     if (!(taxa > 0)) return null;
-    return (contagem / taxa) * 60;
+    const q = totalAmostras.length ? totalAmostras[totalAmostras.length - 1].v : 0;
+    return (q / taxa) * 60;
   }
 
-  function reset() { amostras = []; }
+  // Compatibilidade com o painel antigo e com testes numéricos.
+  function porHora(agora) {
+    return modo === "total" ? porHoraTotal(agora) : resumo(agora).consumoHora;
+  }
+
+  function restanteMin(quantidade, agora) {
+    if (modo !== "total") return resumo(agora).restanteMin;
+    const taxa = porHoraTotal(agora);
+    if (!(taxa > 0)) return null;
+    return ((Number(quantidade) || 0) / taxa) * 60;
+  }
+
+  function reset() {
+    modo = "total";
+    totalAmostras = [];
+    ultimo = new Map();
+    registros.clear();
+  }
+
+  function amostras() {
+    return modo === "total" ? totalAmostras.slice() : [];
+  }
 
   return {
     registrar,
     porHora,
     restanteMin,
+    resumo,
     reset,
-    amostras: () => amostras.slice(),
+    amostras,
   };
 }
 
@@ -2090,17 +2341,43 @@ function criarPonteNavegador() {
     let vida = 0;
     let mana = 0;
     let itens = 0;
+    const pocoes = new Map();
 
     (Array.isArray(inv.mochila) ? inv.mochila : []).forEach(function (o) {
       if (!o) return;
       const qtd = Number(o.cant) || 0;
       itens += qtd;
       const nome = o.nombre || (tabela[o.objeto] && tabela[o.objeto][0]) || "";
-      if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) vida += qtd;
-      else if (/mana potion|poci[oó]n de man[aá]|po[cç][aã]o de man[aá]/i.test(nome)) mana += qtd;
+      let tipo = null;
+      if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) {
+        vida += qtd;
+        tipo = "vida";
+      } else if (/mana potion|poci[oó]n de man[aá]|po[cç][aã]o de man[aá]/i.test(nome)) {
+        mana += qtd;
+        tipo = "mana";
+      }
+      if (!tipo) return;
+      const chave = String(o.objeto != null ? o.objeto : nome);
+      const atual = pocoes.get(chave);
+      if (atual) {
+        atual.quantidade += qtd;
+      } else {
+        pocoes.set(chave, {
+          id: o.objeto != null ? o.objeto : nome,
+          nome: nome,
+          tipo: tipo,
+          quantidade: qtd,
+        });
+      }
     });
 
-    return { vida: vida, mana: mana, itens: itens, oro: Number(inv.oro) || 0 };
+    return {
+      vida: vida,
+      mana: mana,
+      itens: itens,
+      oro: Number(inv.oro) || 0,
+      pocoes: Array.from(pocoes.values()),
+    };
   }
 
   function caminavel(x, y) {
@@ -3022,6 +3299,45 @@ function criarPainel(opcoes) {
     linhaRtc.appendChild(el("span", null, "Manter RTC ligado"));
     raiz.appendChild(linhaRtc);
 
+    const linhaRetarget = linha({ marginTop: "2px" });
+    partes.retarget = document.createElement("input");
+    partes.retarget.type = "checkbox";
+    let retargetSalvo = null;
+    try { retargetSalvo = JSON.parse(localStorage.getItem("ovw.retarget") || "null"); } catch (e) { retargetSalvo = null; }
+    partes.retarget.checked = !!(retargetSalvo && retargetSalvo.ligado);
+    partes.retargetSqm = el("input", {
+      width: "30px",
+      padding: "3px",
+      border: "1px solid #3d5566",
+      borderRadius: "4px",
+      background: "#0d1720",
+      color: "#cfe3f2",
+      font: "10.5px ui-monospace, monospace",
+      textAlign: "center",
+    });
+    partes.retargetSqm.type = "number";
+    partes.retargetSqm.min = "1";
+    partes.retargetSqm.max = "8";
+    partes.retargetSqm.value = String(retargetSalvo && Number(retargetSalvo.sqm) ? retargetSalvo.sqm : 6);
+    partes.retargetSqm.disabled = !partes.retarget.checked;
+    partes.retarget.addEventListener("change", function () {
+      if (window.Olivia && window.Olivia.retarget) {
+        window.Olivia.retarget.definir(partes.retarget.checked, Number(partes.retargetSqm.value) || 6);
+      }
+      partes.retargetSqm.disabled = !partes.retarget.checked;
+      atualizar();
+    });
+    partes.retargetSqm.addEventListener("change", function () {
+      if (window.Olivia && window.Olivia.retarget) {
+        window.Olivia.retarget.definir(partes.retarget.checked, Number(partes.retargetSqm.value) || 6);
+      }
+    });
+    linhaRetarget.appendChild(partes.retarget);
+    linhaRetarget.appendChild(el("span", null, "Re-target após"));
+    linhaRetarget.appendChild(partes.retargetSqm);
+    linhaRetarget.appendChild(el("span", null, "sqm"));
+    raiz.appendChild(linhaRetarget);
+
     // Configuração do ponto de caça (HuntSpotSettings do desktop).
     const secao = document.createElement("details");
     secao.style.marginTop = "6px";
@@ -3203,14 +3519,14 @@ function criarPainel(opcoes) {
 
     partes.estado.textContent = modo === "parada" ? "parada" : modo;
     partes.modo.textContent = modo === "rota"
-      ? "rota · ponto " + indice + "/" + motor.rota.total()
+      ? "rota · Waypoint " + indice + "/" + motor.rota.total()
         + " · volta " + motor.rota.volta()
         + (alvo ? " (" + alvo.x + "," + alvo.y + ")" : "")
         + caca
       : modo === "seguir"
         ? "seguindo " + (motor.seguindoId() || "?")
           + (motor.seguidor.onda() ? " · onda" : "")
-        : "parada · ponto " + indice + "/" + motor.rota.total();
+        : "parada · Waypoint " + indice + "/" + motor.rota.total();
 
     const pausa = Math.ceil(motor.pausaRestante() / 1000);
     const suplemento = pausa > 0 ? " · pausa " + pausa + "s" : "";
@@ -3222,6 +3538,14 @@ function criarPainel(opcoes) {
     if (partes.rtc && window.Olivia && window.Olivia.rtc) {
       const ligado = !!window.Olivia.rtc.ligado();
       if (partes.rtc.checked !== ligado) partes.rtc.checked = ligado;
+    }
+    if (partes.retarget && window.Olivia && window.Olivia.retarget) {
+      const r = window.Olivia.retarget.estado();
+      if (partes.retarget.checked !== !!r.ligado) partes.retarget.checked = !!r.ligado;
+      if (document.activeElement !== partes.retargetSqm) {
+        partes.retargetSqm.value = String(r.sqm || 6);
+      }
+      partes.retargetSqm.disabled = !r.ligado;
     }
 
     const ultimo = motor.log.ultimos(1)[0];
@@ -3255,6 +3579,7 @@ function criarPainel(opcoes) {
   const CHAVE_SESSAO = "ovw.sessao";
   const CHAVE_CACA = "ovw.caca";
   const CHAVE_RTC = "ovw.rtcSempre";
+  const CHAVE_RETARGET = "ovw.retarget";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -3343,6 +3668,18 @@ function criarPainel(opcoes) {
   const area = criarArea();
   let areaAlvo = null;
   let areaMobs = 0;
+
+  let retarget = (function () {
+    const salvo = ler(CHAVE_RETARGET);
+    if (salvo && typeof salvo === "object") {
+      return {
+        ligado: !!salvo.ligado,
+        sqm: Math.max(1, Math.min(8, Number(salvo.sqm) || RETARGET_SQM_PADRAO)),
+      };
+    }
+    return { ligado: false, sqm: RETARGET_SQM_PADRAO };
+  })();
+  let retargetAlvo = null;
 
   // Seguir knight: fica na vaga da onda a 4 sqm e vira para o alvo.
   let ondaLigada = (function () {
@@ -3491,9 +3828,10 @@ function criarPainel(opcoes) {
     const sup = ponte.suprimentos ? ponte.suprimentos() : null;
     const agora = Date.now();
     if (sup) {
-      motor.suprimentos.registrar(sup.vida + sup.mana, agora);
+      motor.suprimentos.registrar(sup.pocoes || [], agora);
       motor.sessao.ouroAtual(sup.oro);
     }
+    const supResumo = sup ? motor.suprimentos.resumo(agora) : null;
     return {
       modo: motor.modo(),
       pausaUi: motor.pausaInterface(),
@@ -3519,6 +3857,7 @@ function criarPainel(opcoes) {
       pausaHumana: { ligado: motor.humano.ligado() },
       reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
       area: { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs },
+      retarget: { ligado: retarget.ligado, sqm: retarget.sqm, alvo: retargetAlvo, areaPrioridade: areaLigada },
       rtc: Object.assign({ ligado: rtcSempre }, rtc.estado()),
       onda: {
         ligado: ondaLigada,
@@ -3527,8 +3866,12 @@ function criarPainel(opcoes) {
       },
       suprimentos: sup
         ? Object.assign({}, sup, {
-          consumoHora: Math.round(motor.suprimentos.porHora(agora)),
-          restanteMin: motor.suprimentos.restanteMin(sup.vida + sup.mana, agora),
+          consumoHora: Math.round(supResumo.consumoHora || 0),
+          gastaHora: Math.round(supResumo.gastaHora || 0),
+          repoeHora: Math.round(supResumo.repoeHora || 0),
+          restanteMin: supResumo.restanteMin,
+          status: supResumo.status,
+          detalhes: supResumo.itens,
         })
         : null,
     };
@@ -3656,6 +3999,36 @@ function criarPainel(opcoes) {
     }
   }
 
+  // Re-target por distância: se o alvo atual ficou longe, pega o monstro mais
+  // próximo. A otimização de área tem prioridade e desliga esta regra.
+  function passoRetarget() {
+    if (!retarget.ligado || areaLigada || suspenso || document.hidden === true || !ponte.pronto()) return;
+    if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
+    const st = ponte.estado();
+    if (!st.emJogo || !st.vivo || !st.pos) return;
+    const atualId = ponte.objetivo();
+    if (atualId == null) return;
+    const atual = ponte.entidade(atualId);
+    if (!atual || atual.morto || !Number.isFinite(atual.x) || !Number.isFinite(atual.y)) return;
+    const escolha = escolherRetarget(
+      st.pos,
+      { id: atualId, x: atual.x, y: atual.y },
+      ponte.monstros(),
+      retarget.sqm
+    );
+    if (!escolha) return;
+    if (ponte.mirar(escolha.id)) {
+      retargetAlvo = escolha.id;
+      registro.evento("retarget_alvo", {
+        de: atualId,
+        para: escolha.id,
+        distancia: escolha.distancia,
+        antes: escolha.antes,
+        limite: retarget.sqm,
+      });
+    }
+  }
+
   function suspenderAutomacao(motivo) {
     const estavaRodando = motor.rodando();
     suspenso = true;
@@ -3747,6 +4120,7 @@ function criarPainel(opcoes) {
 
   setInterval(vigiarConexao, 5000);
   setInterval(passoArea, 700);
+  setInterval(passoRetarget, 700);
   // Confirmação/expiração das repetições de task (prazo de 5 s).
   setInterval(function () { tarefas.passo(); }, 1000);
   // RTC sempre ligado: verifica devagar e só age quando o cliente desligou.
@@ -3849,6 +4223,29 @@ function criarPainel(opcoes) {
       },
       estado: function () {
         return { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs, raio: 2.5 };
+      },
+    },
+    retarget: {
+      ligado: function () { return retarget.ligado; },
+      sqm: function () { return retarget.sqm; },
+      estado: function () {
+        return { ligado: retarget.ligado, sqm: retarget.sqm, alvo: retargetAlvo, areaPrioridade: areaLigada };
+      },
+      definir: function (ligado, sqm) {
+        retarget.ligado = !!ligado;
+        if (sqm !== undefined && Number.isFinite(Number(sqm))) {
+          retarget.sqm = Math.max(1, Math.min(8, Math.round(Number(sqm))));
+        }
+        gravar(CHAVE_RETARGET, retarget);
+        retargetAlvo = null;
+        registro.evento("retarget_config", {
+          ligado: retarget.ligado,
+          sqm: retarget.sqm,
+          areaPrioridade: areaLigada,
+        });
+        if (retarget.ligado && !areaLigada) passoRetarget();
+        publicar();
+        return { ligado: retarget.ligado, sqm: retarget.sqm };
       },
     },
     rtc: {

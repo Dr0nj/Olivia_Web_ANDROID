@@ -207,6 +207,45 @@ export function criarPainel(opcoes) {
     linhaRtc.appendChild(el("span", null, "Manter RTC ligado"));
     raiz.appendChild(linhaRtc);
 
+    const linhaRetarget = linha({ marginTop: "2px" });
+    partes.retarget = document.createElement("input");
+    partes.retarget.type = "checkbox";
+    let retargetSalvo = null;
+    try { retargetSalvo = JSON.parse(localStorage.getItem("ovw.retarget") || "null"); } catch (e) { retargetSalvo = null; }
+    partes.retarget.checked = !!(retargetSalvo && retargetSalvo.ligado);
+    partes.retargetSqm = el("input", {
+      width: "30px",
+      padding: "3px",
+      border: "1px solid #3d5566",
+      borderRadius: "4px",
+      background: "#0d1720",
+      color: "#cfe3f2",
+      font: "10.5px ui-monospace, monospace",
+      textAlign: "center",
+    });
+    partes.retargetSqm.type = "number";
+    partes.retargetSqm.min = "1";
+    partes.retargetSqm.max = "8";
+    partes.retargetSqm.value = String(retargetSalvo && Number(retargetSalvo.sqm) ? retargetSalvo.sqm : 6);
+    partes.retargetSqm.disabled = !partes.retarget.checked;
+    partes.retarget.addEventListener("change", function () {
+      if (window.Olivia && window.Olivia.retarget) {
+        window.Olivia.retarget.definir(partes.retarget.checked, Number(partes.retargetSqm.value) || 6);
+      }
+      partes.retargetSqm.disabled = !partes.retarget.checked;
+      atualizar();
+    });
+    partes.retargetSqm.addEventListener("change", function () {
+      if (window.Olivia && window.Olivia.retarget) {
+        window.Olivia.retarget.definir(partes.retarget.checked, Number(partes.retargetSqm.value) || 6);
+      }
+    });
+    linhaRetarget.appendChild(partes.retarget);
+    linhaRetarget.appendChild(el("span", null, "Re-target após"));
+    linhaRetarget.appendChild(partes.retargetSqm);
+    linhaRetarget.appendChild(el("span", null, "sqm"));
+    raiz.appendChild(linhaRetarget);
+
     // Configuração do ponto de caça (HuntSpotSettings do desktop).
     const secao = document.createElement("details");
     secao.style.marginTop = "6px";
@@ -388,14 +427,14 @@ export function criarPainel(opcoes) {
 
     partes.estado.textContent = modo === "parada" ? "parada" : modo;
     partes.modo.textContent = modo === "rota"
-      ? "rota · ponto " + indice + "/" + motor.rota.total()
+      ? "rota · Waypoint " + indice + "/" + motor.rota.total()
         + " · volta " + motor.rota.volta()
         + (alvo ? " (" + alvo.x + "," + alvo.y + ")" : "")
         + caca
       : modo === "seguir"
         ? "seguindo " + (motor.seguindoId() || "?")
           + (motor.seguidor.onda() ? " · onda" : "")
-        : "parada · ponto " + indice + "/" + motor.rota.total();
+        : "parada · Waypoint " + indice + "/" + motor.rota.total();
 
     const pausa = Math.ceil(motor.pausaRestante() / 1000);
     const suplemento = pausa > 0 ? " · pausa " + pausa + "s" : "";
@@ -407,6 +446,14 @@ export function criarPainel(opcoes) {
     if (partes.rtc && window.Olivia && window.Olivia.rtc) {
       const ligado = !!window.Olivia.rtc.ligado();
       if (partes.rtc.checked !== ligado) partes.rtc.checked = ligado;
+    }
+    if (partes.retarget && window.Olivia && window.Olivia.retarget) {
+      const r = window.Olivia.retarget.estado();
+      if (partes.retarget.checked !== !!r.ligado) partes.retarget.checked = !!r.ligado;
+      if (document.activeElement !== partes.retargetSqm) {
+        partes.retargetSqm.value = String(r.sqm || 6);
+      }
+      partes.retargetSqm.disabled = !r.ligado;
     }
 
     const ultimo = motor.log.ultimos(1)[0];

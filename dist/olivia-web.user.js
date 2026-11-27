@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.7
+// @version      0.9.9
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -200,12 +200,11 @@ function criarHumano(opcoes) {
 // Ponto de caça: a mesma ideia do HuntSpotSettings/LongRouteSession do desktop
 // (25/11/2026). Chegou no sqm marcado: para, segura até "limpar" (poucos monstros
 // no raio e mana suficiente), espera um instante para confirmar e só então sai.
-// O trem (26/11) também veio: andando com muitos monstros e preso, caça no lugar.
+// A regra de "trem" (preso com N+ monstros → caçar no lugar) foi removida em
+// 27/11/2026, igual ao desktop: parado, o cerco fechava em 2–3 s.
 //
 // A lógica é pura: não conhece jogador, jogo nem teclado. O motor da rota decide
 // quando entrar/sair e o motor de comandos manda `parar`/`ir`.
-const TREM_RAIO = 4;
-const TREM_PRESO_MS = 1500;
 const ACOMODAR_MIN_MS = 1500;
 const ACOMODAR_MAX_MS = 3000;
 // Esperas por caminho livre num trecho de caça; depois disso, a rota volta ao normal.
@@ -217,7 +216,6 @@ const CACA_PADRAO = Object.freeze({
   tetoMs: 180000,
   manaMinPct: 30,
   sairComMobs: 0,
-  tremMobs: 0,
 });
 
 function inteiro(valor, padrao, min, max) {
@@ -238,7 +236,6 @@ function normalizarCaca(config) {
     tetoMs: tetoMs,
     manaMinPct: inteiro(c.manaMinPct, CACA_PADRAO.manaMinPct, 0, 100),
     sairComMobs: inteiro(c.sairComMobs, CACA_PADRAO.sairComMobs, 0, 10),
-    tremMobs: inteiro(c.tremMobs, CACA_PADRAO.tremMobs, 0, 30),
   };
 }
 
@@ -921,17 +918,6 @@ function criarRota(opcoes) {
       }
       // A pausa configurada é aplicada no próximo tick (o ponto já conta como concluído).
       return { acao: "avancar", indice: indice, alvo: pontos[indice], perto: perto, pos: pos };
-    }
-
-    // Trem preso (26/11): andando com N+ monstros a até 4 sqm e sem mudar de sqm
-    // por 1,5 s, caça no lugar em vez de esperar o caminho abrir.
-    const regras = caca.config();
-    if (regras.tremMobs > 0 && cacaEsperas < MAX_ESPERAS
-        && agora - mudouEm >= TREM_PRESO_MS
-        && contarMobs(pos, mobs, TREM_RAIO) >= regras.tremMobs) {
-      const quantos = contarMobs(pos, mobs, TREM_RAIO);
-      return iniciarCaca(agora, false,
-        "preso com " + quantos + " monstros em " + pos.x + "," + pos.y + "; caçando no lugar");
     }
 
     if (agora - desde > limite) {
@@ -3360,7 +3346,6 @@ function criarPainel(opcoes) {
       { chave: "tetoMs", rotulo: "Teto (s)", min: 10, max: 900, fator: 1000 },
       { chave: "manaMinPct", rotulo: "Mana (%)", min: 0, max: 100, fator: 1 },
       { chave: "sairComMobs", rotulo: "Sair c/ mobs", min: 0, max: 10, fator: 1 },
-      { chave: "tremMobs", rotulo: "Trem (mobs)", min: 0, max: 30, fator: 1 },
     ];
     partes.cacaCampos = {};
     campos.forEach(function (c) {

@@ -154,7 +154,7 @@ test("seguidor também anda em trechos curtos", () => {
 test("ponto de caça para o personagem e só anda depois de limpar", () => {
   const c = cenario({ x: 10, y: 10, z: 0 });
   c.motor.iniciarRota([{ x: 10, y: 10, hunt: true }, [12, 10]], "teste", {
-    caca: { raioLimpo: 2, minParadoMs: 0, tetoMs: 30000, manaMinPct: 0, sairComMobs: 0, tremMobs: 0 },
+    caca: { raioLimpo: 2, minParadoMs: 0, tetoMs: 30000, manaMinPct: 0, sairComMobs: 0 },
   });
 
   c.motor.tick();

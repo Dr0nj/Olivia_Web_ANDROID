@@ -48,10 +48,10 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   - respeita o **mínimo parado** e o **teto de segurança** (sai mesmo sem limpar);
   - ao sair, o trecho até o próximo waypoint é **trecho de caça**: caminho travado
     **espera abrir no lugar** em vez de pular (até 4 esperas);
-  - **trem**: andando com N+ monstros a até 4 sqm e preso por 1,5 s, caça no lugar sem
-    pular o waypoint (0 = desligado);
+  - a regra antiga de **“trem”** foi **removida** (como no desktop em 27/11): parado, o
+    cerco fechava em 2–3 s;
   - configuração em **Caça…** (APK) ou **Ponto de caça** (modo página): livre em sqm,
-    mínimo, teto, mana, sair com N monstros e trem.
+    mínimo, teto, mana e sair com N monstros.
 - **Navegação** (regras trazidas do desktop):
   - ao **Iniciar**, começa pelo waypoint **mais próximo** da posição atual, não pelo ponto 0;
   - chegada exata; se parar a 1 tile e ficar parado ~0,6 s, conta como chegado;
@@ -80,7 +80,10 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   nível), pontos, voltas, mortes, paradas, desafios respondidos/janelas. **Resetar sessão**
   zera os contadores.
 - **Suprimentos**: poções de vida/mana, itens e ouro do inventário; consumo/hora e tempo
-  restante estimado. “Itens” é a soma das quantidades na mochila (não os slots).
+  restante estimado pelo **saldo líquido** (gasto menos loot). O cartão do hub mostra a
+  previsão; **toque nele** para abrir a aba **Suprimentos**, com o cálculo de cada poção
+  (quantidade, gasta/h, loot/h, saldo/h e tempo para acabar). “Itens” é a soma das
+  quantidades na mochila (não os slots).
 - **Repetir tasks e aceitar missões** (checkbox único):
   - no popup **“Task complete”**, **repete a task que acabou de finalizar** (usa o `id` do
     popup), fecha o popup pela função interna e envia
@@ -102,8 +105,8 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   continua; não pula o waypoint só porque um mob está na frente. Logs `rota_desvio`/`rota_desvio_fim`.
 - **Hub**: status da rota (`ANDANDO`/`PAUSA`/`STOPPED`/`CAÇANDO`) com waypoint e posição,
   nível, volta e tempo; cartões de XP/h, XP da sessão, gold coletado, previsão de
-  suprimentos, tasks repetidas, anti-bot, stamina e voltas. Vida/mana e gráfico saíram
-  da tela principal.
+  suprimentos (**clique para o detalhe por item**), tasks repetidas, anti-bot, stamina e
+  voltas. Vida/mana e gráfico saíram da tela principal.
 - **RTC sempre ligado** (opcional em ⚙): se o jogo desligar o Hunt Assist, o Olivia
   religa usando `Asistente.aa.on` + `Asistente.mandarAA()` — a mesma API do botão RTC.
   Não interfere com o menu do jogo aberto e entra em backoff se o servidor recusar.
@@ -170,7 +173,7 @@ driver/src/                   motor JS
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   tarefas.js                  repetição de task + confirmação no HUD
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 144 testes (node --test)
+driver/tests/                 143 testes (node --test)
 dist/olivia-web.user.js       userscript gerado (única versão suportada)
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -185,7 +188,7 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 144 testes
+node --test driver\tests                 # 143 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 

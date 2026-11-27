@@ -439,7 +439,6 @@ test("marca de ponto de caça e configuração são salvas e retomadas", () => {
     tetoMs: 120000,
     manaMinPct: 40,
     sairComMobs: 1,
-    tremMobs: 5,
   });
   primeiro.janela.Olivia.rota([[10, 10, "h"], [11, 10]], { repetir: true });
   avancar(3000);
@@ -449,7 +448,7 @@ test("marca de ponto de caça e configuração são salvas e retomadas", () => {
   assert.equal(primeiro.janela.localStorage.getItem("ovw.caca") != null, true);
 
   const segundo = cenario({ localStorage: primeiro.janela.localStorage });
-  assert.equal(segundo.janela.Olivia.motor.rota.cacaConfig().tremMobs, 5);
+  assert.equal(segundo.janela.Olivia.motor.rota.cacaConfig().sairComMobs, 1);
   assert.equal(segundo.janela.Olivia.motor.rota.pontos()[0].hunt, true);
 });
 

@@ -100,9 +100,10 @@ visível e jogável). Para voltar, **Voltar**.
 3. O último ponto deve ficar perto do primeiro para a volta fechar; para pausa num ponto,
    edite-o como `{"x":123,"y":96,"pausaMs":5000}`.
 4. Para **ponto de caça**, toque em **Ponto de caça** (marca o sqm atual) ou edite como
-   `{"x":123,"y":96,"hunt":true}`. Em **Caça…** ajuste raio livre, mínimo, teto, mana,
-   “sair com” monstros e trem. Ao chegar, o personagem para e só sai depois de limpar
-   (ou do teto), sem pular o waypoint.
+   `{"x":123,"y":96,"hunt":true}`. Em **Caça…** ajuste raio livre, mínimo, teto, mana e
+   “sair com” monstros. Ao chegar, o personagem para e só sai depois de limpar
+   (ou do teto), sem pular o waypoint. A antiga regra de **trem** foi removida (27/11),
+   como no desktop.
 5. **Iniciar** volta ao hub e começa a andar em trechos de até 6 tiles (o servidor ignora
    `ir` a mais de 8). Ao chegar no último ponto, começa a volta de novo (`volta` sobe).
 
@@ -129,8 +130,7 @@ waypoint e `voltas` a cada laço.
 - Volta concluída limpa os pulados e tenta todos de novo.
 - **Ponto de caça** (`hunt`) exige o sqm exato, para (`parar`) e segura até o raio ficar
   livre/mana ok, confirma 1,5–3 s e respeita mínimo/teto. Log: `caca_inicio`/`caca_fim`.
-- **Trecho de caça** travado espera no lugar (até 4 vezes) em vez de pular; **trem**
-  (N+ monstros a até 4 sqm por 1,5 s) também caça no lugar.
+- **Trecho de caça** travado espera no lugar (até 4 vezes) em vez de pular.
 
 **Atraso entre waypoints**
 

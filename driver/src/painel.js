@@ -268,7 +268,6 @@ export function criarPainel(opcoes) {
       { chave: "tetoMs", rotulo: "Teto (s)", min: 10, max: 900, fator: 1000 },
       { chave: "manaMinPct", rotulo: "Mana (%)", min: 0, max: 100, fator: 1 },
       { chave: "sairComMobs", rotulo: "Sair c/ mobs", min: 0, max: 10, fator: 1 },
-      { chave: "tremMobs", rotulo: "Trem (mobs)", min: 0, max: 30, fator: 1 },
     ];
     partes.cacaCampos = {};
     campos.forEach(function (c) {

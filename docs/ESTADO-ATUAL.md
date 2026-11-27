@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.7
+**Versão:** 0.9.9
 **Data:** 2026-11-27
-**Commit:** release v0.9.7
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.7
-**APK:** `android/app/build/olivia-web.apk` (145 KB)
+**Commit:** release v0.9.9
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.9
+**APK:** `android/app/build/olivia-web.apk` (149 KB)
 
 ## Validado
 
-- **144 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **143 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -18,6 +18,23 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.9 (detalhe de suprimentos)
+
+1. O cartão **SUPRIMENTOS** do hub virou clicável (`SUPRIMENTOS ›`) e abre uma aba com
+   o mesmo visual.
+2. A aba mostra a **previsão total** e, por item, o cálculo: quantidade, gasto/h,
+   loot/h, saldo/h e tempo até acabar (ou `loot repõe`, `esgotado`, `sem gasto`).
+3. O tempo da visão geral continua sendo o **menor** entre os itens consumidos.
+
+## Mudanças da 0.9.8 (trem removido)
+
+1. **Trem removido** do mobile, igual ao desktop em 27/11: parado no meio da rota, o
+   cerco fechava em 2–3 s e causava mortes. O personagem continua andando; o ponto de
+   caça marcado (`hunt`) segue funcionando normalmente.
+2. Campo **“Trem: N+ monstros”** saiu do dialog **Caça…** do APK e do painel da página.
+   Configurações antigas com `cacaTremMobs`/`tremMobs` são ignoradas.
+3. Visão geral mantém **Level** e **Waypoint** da 0.9.7.
 
 ## Mudanças da 0.9.7 (suprimentos)
 
@@ -67,7 +84,7 @@
    Waypoint marcado (`hunt`) exige o sqm exato, para, segura até sobrar até N monstros
    no raio e a mana mínima, confirma por 1,5–3 s, respeita mínimo/teto e sai sem pular.
 2. **Trecho de caça**: caminho travado depois do ponto espera abrir no lugar (até 4
-   esperas). **Trem**: N+ monstros a até 4 sqm e preso 1,5 s caça no lugar sem pular.
+   esperas). **Trem**: removido na 0.9.8, como no desktop (parado, o cerco fechava).
 3. **UI**: botão **Ponto de caça** e dialog **Caça…** no APK; marcação/config no painel
    da página. Configuração fica em `ovw.caca` / prefs `caca*`.
 
@@ -132,7 +149,7 @@
 
 ## Pendências
 
-- Validar o **ponto de caça** em hunt real: chegada exata, limpeza, mana, teto e trem.
+- Validar o **ponto de caça** em hunt real: chegada exata, limpeza, mana e teto.
 - Validar a escolha de alvo da **área** em um hunt real (log `area_alvo`).
 - Testar no **celular** do usuário.
 - Testar a **reconexão** com uma queda real de WebSocket.

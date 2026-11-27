@@ -221,7 +221,6 @@ function cacaConfig(extra) {
     tetoMs: 30000,
     manaMinPct: 30,
     sairComMobs: 0,
-    tremMobs: 0,
   }, extra || {});
 }
 
@@ -268,34 +267,6 @@ test("ponto de caça com monstro espera o teto de segurança", () => {
   assert.equal(teto.acao, "concluir");
   assert.equal(teto.fimCaca, true);
   assert.match(teto.cacaMotivo, /teto/);
-});
-
-test("preso com trem entra em caça no lugar sem pular o waypoint", () => {
-  const rota = criarRota({
-    caca: cacaConfig({ tremMobs: 3 }),
-    aleatorio: () => 0,
-    timeoutMs: 60000,
-    timeoutMaxMs: 60000,
-  });
-  rota.carregar([[20, 0]]);
-  rota.iniciar(0, { x: 0, y: 0 });
-
-  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 0 }).acao, "ir");
-  const preso = rota.passo({
-    pos: { x: 0, y: 0 },
-    agora: 1600,
-    mobs: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
-    manaPct: 100,
-  });
-  assert.equal(preso.acao, "cacar");
-  assert.equal(preso.emPonto, false);
-  assert.equal(rota.indice(), 0, "não pode pular o waypoint");
-
-  rota.passo({ pos: { x: 0, y: 0 }, agora: 1700, mobs: [], manaPct: 100 });
-  const soltou = rota.passo({ pos: { x: 0, y: 0 }, agora: 3200, mobs: [], manaPct: 100 });
-  assert.equal(soltou.acao, "caca_fim");
-  // Continua indo para o MESMO waypoint.
-  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 3300, mobs: [], manaPct: 100 }).x, 20);
 });
 
 test("trecho saindo de ponto de caça espera caminho em vez de pular", () => {

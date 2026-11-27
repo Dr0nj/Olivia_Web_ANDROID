@@ -4,9 +4,7 @@ import {
   CACA_PADRAO,
   normalizarCaca,
   contarMobs,
-  criarCaca,
-  TREM_RAIO,
-} from "../src/caca.js";
+  criarCaca,} from "../src/caca.js";
 
 const pos = { x: 10, y: 10 };
 
@@ -16,9 +14,7 @@ function config(extra) {
     minParadoMs: 1000,
     tetoMs: 30000,
     manaMinPct: 30,
-    sairComMobs: 0,
-    tremMobs: 0,
-  }, extra || {});
+    sairComMobs: 0,  }, extra || {});
 }
 
 test("configuração do ponto de caça tem os padrões do desktop e limites", () => {
@@ -28,20 +24,16 @@ test("configuração do ponto de caça tem os padrões do desktop e limites", ()
     minParadoMs: -5,
     tetoMs: 900001,
     manaMinPct: 200,
-    sairComMobs: 50,
-    tremMobs: -1,
-  });
+    sairComMobs: 50,  });
   assert.equal(c.raioLimpo, 1);
   assert.equal(c.minParadoMs, 0);
   assert.equal(c.tetoMs, 900000);
   assert.equal(c.manaMinPct, 100);
   assert.equal(c.sairComMobs, 10);
-  assert.equal(c.tremMobs, 0);
   assert.equal(normalizarCaca({ minParadoMs: 900000, tetoMs: 10000 }).minParadoMs, 10000);
 });
 
 test("conta monstros por Chebyshev no raio do ponto", () => {
-  assert.equal(TREM_RAIO, 4);
   const mobs = [
     { x: 10, y: 10 },
     { x: 12, y: 12 },

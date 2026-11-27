@@ -29,8 +29,10 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Painel nativo. Não cria nó no DOM do jogo: o detector não vê nome, cor nem
@@ -106,6 +108,13 @@ class Painel {
     private LinearLayout telaRota;
     private LinearLayout telaConfig;
     private LinearLayout telaSeguir;
+    private LinearLayout telaSuprimentos;
+    private LinearLayout listaSuprimentos;
+    private TextView supTelaValor;
+    private TextView supTelaDetalhe;
+    private TextView supTelaTaxas;
+    private final Map<String, LinhaSuprimento> linhasSuprimento = new LinkedHashMap<>();
+    private String assinaturaSuprimento = "";
     private ScrollView rolagemCorpo;
     private LinearLayout listaSeguir;
     private EditText distanciaSeguir;
@@ -249,9 +258,13 @@ class Painel {
         goldDetalhe = texto(" ", 8.2f, suave, false);
         supValor = texto("—", 15.5f, amarelo, true);
         supDetalhe = texto(" ", 8.2f, suave, false);
+        LinearLayout cardSup = cartao("SUPRIMENTOS ›", supValor, supDetalhe, amarelo);
+        cardSup.setClickable(true);
+        cardSup.setFocusable(true);
+        cardSup.setOnClickListener(v -> abrirTelaSuprimentos());
         telaHub.addView(linhaCartoes(
                 cartao("GOLD COLETADO", goldValor, goldDetalhe, verde),
-                cartao("SUPRIMENTOS", supValor, supDetalhe, amarelo)));
+                cardSup));
 
         taskValor = texto("—", 15.5f, roxo, true);
         taskDetalhe = texto(" ", 8.2f, suave, false);
@@ -277,6 +290,61 @@ class Painel {
 
         telaSeguir = montarTelaSeguir();
         corpo.addView(telaSeguir);
+
+        telaSuprimentos = montarTelaSuprimentos();
+        corpo.addView(telaSuprimentos);
+    }
+
+    private LinearLayout montarTelaSuprimentos() {
+        LinearLayout tela = new LinearLayout(ctx);
+        tela.setOrientation(LinearLayout.VERTICAL);
+        tela.addView(texto("Suprimentos", 10.5f, Color.rgb(207, 227, 242), true));
+        tela.addView(texto("Previsão pelo saldo: gasto menos o que o loot repõe.", 8.5f,
+                Color.rgb(111, 138, 156), false));
+
+        supTelaValor = texto("—", 16f, Color.rgb(242, 198, 91), true);
+        supTelaDetalhe = texto(" ", 9.2f, Color.rgb(207, 227, 242), false);
+        supTelaTaxas = texto(" ", 8.3f, Color.rgb(159, 179, 194), false);
+        LinearLayout resumo = cartao("PREVISÃO TOTAL", supTelaValor, supTelaDetalhe,
+                Color.rgb(242, 198, 91));
+        resumo.addView(supTelaTaxas);
+        LinearLayout.LayoutParams pResumo = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pResumo.topMargin = d(4);
+        tela.addView(resumo, pResumo);
+
+        TextView tituloLista = texto("POR ITEM", 7.8f, Color.argb(220, 111, 138, 156), true);
+        tituloLista.setLetterSpacing(0.06f);
+        tituloLista.setPadding(0, d(7), 0, 0);
+        tela.addView(tituloLista);
+
+        listaSuprimentos = new LinearLayout(ctx);
+        listaSuprimentos.setOrientation(LinearLayout.VERTICAL);
+        tela.addView(listaSuprimentos);
+
+        LinearLayout volta = linha();
+        volta.setPadding(0, d(6), 0, 0);
+        volta.addView(botao("Voltar", v -> voltarHub()));
+        tela.addView(volta);
+
+        tela.setVisibility(View.GONE);
+        return tela;
+    }
+
+    private void abrirTelaSuprimentos() {
+        if (telaSuprimentos == null) return;
+        telaHub.setVisibility(View.GONE);
+        if (telaRota != null) telaRota.setVisibility(View.GONE);
+        if (telaConfig != null) telaConfig.setVisibility(View.GONE);
+        if (telaSeguir != null) telaSeguir.setVisibility(View.GONE);
+        telaSuprimentos.setVisibility(View.VISIBLE);
+    }
+
+    private static class LinhaSuprimento {
+        TextView nome;
+        TextView valor;
+        TextView detalhe;
+        TextView taxas;
     }
 
     private LinearLayout montarTelaSeguir() {
@@ -354,6 +422,7 @@ class Painel {
         telaHub.setVisibility(View.GONE);
         if (telaRota != null) telaRota.setVisibility(View.GONE);
         if (telaConfig != null) telaConfig.setVisibility(View.GONE);
+        if (telaSuprimentos != null) telaSuprimentos.setVisibility(View.GONE);
         telaSeguir.setVisibility(View.VISIBLE);
         carregarJogadores();
     }
@@ -747,6 +816,7 @@ class Painel {
         telaHub.setVisibility(View.GONE);
         if (telaConfig != null) telaConfig.setVisibility(View.GONE);
         if (telaSeguir != null) telaSeguir.setVisibility(View.GONE);
+        if (telaSuprimentos != null) telaSuprimentos.setVisibility(View.GONE);
         telaRota.setVisibility(View.VISIBLE);
     }
 
@@ -755,6 +825,7 @@ class Painel {
         telaHub.setVisibility(View.GONE);
         if (telaRota != null) telaRota.setVisibility(View.GONE);
         if (telaSeguir != null) telaSeguir.setVisibility(View.GONE);
+        if (telaSuprimentos != null) telaSuprimentos.setVisibility(View.GONE);
         telaConfig.setVisibility(View.VISIBLE);
         atualizarResumoAtraso();
     }
@@ -764,6 +835,7 @@ class Painel {
         telaRota.setVisibility(View.GONE);
         if (telaConfig != null) telaConfig.setVisibility(View.GONE);
         if (telaSeguir != null) telaSeguir.setVisibility(View.GONE);
+        if (telaSuprimentos != null) telaSuprimentos.setVisibility(View.GONE);
         telaHub.setVisibility(View.VISIBLE);
     }
 
@@ -956,7 +1028,6 @@ class Painel {
             o.put("tetoMs", prefs.getInt("cacaTetoMs", 180000));
             o.put("manaMinPct", prefs.getInt("cacaMana", 30));
             o.put("sairComMobs", prefs.getInt("cacaSairMobs", 0));
-            o.put("tremMobs", prefs.getInt("cacaTremMobs", 0));
         } catch (Exception ignorado) {
         }
         return o.toString();
@@ -996,7 +1067,6 @@ class Painel {
         final EditText teto = campoCaca(prefs.getInt("cacaTetoMs", 180000) / 1000);
         final EditText mana = campoCaca(prefs.getInt("cacaMana", 30));
         final EditText sair = campoCaca(prefs.getInt("cacaSairMobs", 0));
-        final EditText trem = campoCaca(prefs.getInt("cacaTremMobs", 0));
 
         LinearLayout caixa = new LinearLayout(ctx);
         caixa.setOrientation(LinearLayout.VERTICAL);
@@ -1007,10 +1077,8 @@ class Painel {
         caixa.addView(linhaCaca("Teto de segurança (s)", teto));
         caixa.addView(linhaCaca("Mana para sair (%)", mana));
         caixa.addView(linhaCaca("Sair com até (mobs)", sair));
-        caixa.addView(linhaCaca("Trem: N+ monstros", trem));
         TextView dica = texto("Livre = nenhum monstro a até N sqm. Sai quando sobrarem até\n"
-                + "\"sair com\" monstros no raio (0 = só sem nenhum). Trem 0 desliga:\n"
-                + "andando com N+ monstros a até 4 sqm e preso 1,5 s, caça no lugar.",
+                + "\"sair com\" monstros no raio (0 = só sem nenhum).",
                 8.5f, Color.rgb(111, 138, 156), false);
         dica.setPadding(0, d(5), 0, 0);
         caixa.addView(dica);
@@ -1032,7 +1100,6 @@ class Painel {
                             .putInt("cacaTetoMs", mx)
                             .putInt("cacaMana", lerCaca(mana, 30, 0, 100))
                             .putInt("cacaSairMobs", lerCaca(sair, 0, 0, 10))
-                            .putInt("cacaTremMobs", lerCaca(trem, 0, 0, 30))
                             .apply();
                     acoes.definirCaca(cacaJson());
                     atualizarTextoRota();
@@ -1259,26 +1326,11 @@ class Painel {
             long goldAgora = sup != null ? sup.optLong("oro", 0) : 0;
             goldDetalhe.setText("agora " + numero(goldAgora));
 
-            double minSup = sup != null ? sup.optDouble("restanteMin", -1) : -1;
-            String statusSup = sup != null ? sup.optString("status", "") : "";
-            String valorSup;
-            if (sup == null) {
-                valorSup = "—";
-            } else if (!sup.isNull("restanteMin") && minSup > 0) {
-                valorSup = tempoSuprimento(minSup);
-            } else if ("loot repõe".equals(statusSup)) {
-                valorSup = "loot repõe";
-            } else if ("esgotado".equals(statusSup)) {
-                valorSup = "esgotado";
-            } else if ("sem gasto recente".equals(statusSup)) {
-                valorSup = "sem gasto";
-            } else {
-                valorSup = "coletando";
-            }
-            supValor.setText(valorSup);
+            supValor.setText(valorSuprimento(sup));
             int potVida = sup != null ? sup.optInt("vida", 0) : 0;
             int potMana = sup != null ? sup.optInt("mana", 0) : 0;
             supDetalhe.setText("V " + potVida + " · M " + potMana);
+            atualizarTelaSuprimentos(sup);
 
             int tasks = sessao != null ? sessao.optInt("tasks", 0) : 0;
             taskValor.setText(numero(tasks));
@@ -1744,6 +1796,127 @@ class Painel {
             return m == 0 ? "~" + h + "h" : "~" + h + "h " + m;
         }
         return "~" + Math.max(1, total) + "min";
+    }
+
+    private String valorSuprimento(JSONObject sup) {
+        if (sup == null) return "—";
+        double minSup = sup.optDouble("restanteMin", -1);
+        String statusSup = sup.optString("status", "");
+        if (!sup.isNull("restanteMin") && minSup > 0) return tempoSuprimento(minSup);
+        if ("loot repõe".equals(statusSup)) return "loot repõe";
+        if ("esgotado".equals(statusSup)) return "esgotado";
+        if ("sem gasto recente".equals(statusSup)) return "sem gasto";
+        return "coletando";
+    }
+
+    private String valorItemSuprimento(JSONObject item) {
+        double restante = item.isNull("restanteMin") ? -1 : item.optDouble("restanteMin", -1);
+        String status = item.optString("status", "");
+        if (restante > 0) return tempoSuprimento(restante);
+        if ("loot repõe".equals(status)) return "loot repõe";
+        if ("esgotado".equals(status)) return "esgotado";
+        if ("sem gasto recente".equals(status)) return "sem gasto";
+        return "coletando";
+    }
+
+    private static String chaveSuprimento(JSONObject item) {
+        String id = item.optString("id", "");
+        if (!id.isEmpty()) return id;
+        String nome = item.optString("nome", "");
+        return nome.isEmpty() ? "item" : nome;
+    }
+
+    private LinhaSuprimento criarLinhaSuprimento(String nome) {
+        LinearLayout card = new LinearLayout(ctx);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable fundo = new GradientDrawable();
+        fundo.setColor(Color.argb(190, 12, 20, 27));
+        fundo.setCornerRadius(d(7));
+        fundo.setStroke(Math.max(1, d(1)), Color.argb(70, 61, 85, 102));
+        card.setBackground(fundo);
+        card.setPadding(d(7), d(5), d(7), d(5));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.topMargin = d(4);
+        card.setLayoutParams(p);
+
+        LinhaSuprimento l = new LinhaSuprimento();
+        l.nome = texto(nome, 8.7f, Color.rgb(207, 227, 242), true);
+        l.valor = texto("—", 13.5f, Color.rgb(242, 198, 91), true);
+        l.detalhe = texto(" ", 8.4f, Color.rgb(159, 179, 194), false);
+        l.taxas = texto(" ", 8.2f, Color.rgb(111, 138, 156), false);
+        card.addView(l.nome);
+        card.addView(l.valor);
+        card.addView(l.detalhe);
+        card.addView(l.taxas);
+        if (listaSuprimentos != null) listaSuprimentos.addView(card);
+        return l;
+    }
+
+    private void atualizarTelaSuprimentos(JSONObject sup) {
+        if (supTelaValor == null) return;
+        supTelaValor.setText(valorSuprimento(sup));
+        if (sup == null) {
+            supTelaDetalhe.setText("sem leitura");
+            supTelaTaxas.setText(" ");
+            if (listaSuprimentos != null) listaSuprimentos.removeAllViews();
+            linhasSuprimento.clear();
+            assinaturaSuprimento = "";
+            return;
+        }
+
+        int vida = sup.optInt("vida", 0);
+        int mana = sup.optInt("mana", 0);
+        supTelaDetalhe.setText("V " + vida + " · M " + mana);
+
+        long gasta = Math.round(sup.optDouble("gastaHora", 0));
+        long repoe = Math.round(sup.optDouble("repoeHora", 0));
+        long saldo = Math.max(0, gasta - repoe);
+        supTelaTaxas.setText("gasto " + numero(gasta) + "/h · loot " + numero(repoe)
+                + "/h · saldo " + numero(saldo) + "/h");
+
+        JSONArray detalhes = sup.optJSONArray("detalhes");
+        StringBuilder assinatura = new StringBuilder();
+        if (detalhes != null) {
+            for (int i = 0; i < detalhes.length(); i++) {
+                JSONObject item = detalhes.optJSONObject(i);
+                if (item == null) continue;
+                assinatura.append(chaveSuprimento(item)).append('|');
+            }
+        }
+        if (!assinatura.toString().equals(assinaturaSuprimento)) {
+            assinaturaSuprimento = assinatura.toString();
+            linhasSuprimento.clear();
+            if (listaSuprimentos != null) listaSuprimentos.removeAllViews();
+            if (detalhes != null) {
+                for (int i = 0; i < detalhes.length(); i++) {
+                    JSONObject item = detalhes.optJSONObject(i);
+                    if (item == null) continue;
+                    String nome = item.optString("nome", "");
+                    if (nome.isEmpty()) nome = "Item " + chaveSuprimento(item);
+                    linhasSuprimento.put(chaveSuprimento(item), criarLinhaSuprimento(nome));
+                }
+            }
+        }
+
+        if (detalhes == null) return;
+        for (int i = 0; i < detalhes.length(); i++) {
+            JSONObject item = detalhes.optJSONObject(i);
+            if (item == null) continue;
+            LinhaSuprimento linha = linhasSuprimento.get(chaveSuprimento(item));
+            if (linha == null) continue;
+            String nome = item.optString("nome", "");
+            if (!nome.isEmpty()) linha.nome.setText(nome);
+            linha.valor.setText(valorItemSuprimento(item));
+            int qtd = item.optInt("quantidade", 0);
+            String tipo = item.optString("tipo", "");
+            linha.detalhe.setText("qtd " + qtd + (tipo.isEmpty() ? "" : " · " + tipo));
+            long gastoItem = Math.round(item.optDouble("gastaHora", 0));
+            long repoeItem = Math.round(item.optDouble("repoeHora", 0));
+            long saldoItem = Math.max(0, gastoItem - repoeItem);
+            linha.taxas.setText("gasta " + numero(gastoItem) + "/h · loot "
+                    + numero(repoeItem) + "/h · saldo " + numero(saldoItem) + "/h");
+        }
     }
 
     /** Stamina do jogo vem em horas decimais; mostra h:mm. */

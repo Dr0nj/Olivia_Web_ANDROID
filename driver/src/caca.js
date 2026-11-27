@@ -1,12 +1,11 @@
 // Ponto de caça: a mesma ideia do HuntSpotSettings/LongRouteSession do desktop
 // (25/11/2026). Chegou no sqm marcado: para, segura até "limpar" (poucos monstros
 // no raio e mana suficiente), espera um instante para confirmar e só então sai.
-// O trem (26/11) também veio: andando com muitos monstros e preso, caça no lugar.
+// A regra de "trem" (preso com N+ monstros → caçar no lugar) foi removida em
+// 27/11/2026, igual ao desktop: parado, o cerco fechava em 2–3 s.
 //
 // A lógica é pura: não conhece jogador, jogo nem teclado. O motor da rota decide
 // quando entrar/sair e o motor de comandos manda `parar`/`ir`.
-export const TREM_RAIO = 4;
-export const TREM_PRESO_MS = 1500;
 export const ACOMODAR_MIN_MS = 1500;
 export const ACOMODAR_MAX_MS = 3000;
 // Esperas por caminho livre num trecho de caça; depois disso, a rota volta ao normal.
@@ -18,7 +17,6 @@ export const CACA_PADRAO = Object.freeze({
   tetoMs: 180000,
   manaMinPct: 30,
   sairComMobs: 0,
-  tremMobs: 0,
 });
 
 function inteiro(valor, padrao, min, max) {
@@ -39,7 +37,6 @@ export function normalizarCaca(config) {
     tetoMs: tetoMs,
     manaMinPct: inteiro(c.manaMinPct, CACA_PADRAO.manaMinPct, 0, 100),
     sairComMobs: inteiro(c.sairComMobs, CACA_PADRAO.sairComMobs, 0, 10),
-    tremMobs: inteiro(c.tremMobs, CACA_PADRAO.tremMobs, 0, 30),
   };
 }
 

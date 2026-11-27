@@ -8,7 +8,7 @@
 //  - se todos os pontos falharem, espera 5 s e recomeça a volta (até 12 vezes);
 //  - a volta concluída limpa os pontos pulados;
 //  - ponto de caça: pisa EXATAMENTE no sqm marcado, para e segura até limpar (caca.js).
-import { criarCaca, contarMobs, TREM_RAIO, TREM_PRESO_MS, MAX_ESPERAS } from "./caca.js";
+import { criarCaca, MAX_ESPERAS } from "./caca.js";
 
 // Janela em que uma mudança de posição ainda conta como "andando" (o estado do
 // cliente chega a cada ~250 ms; 500 ms evita piscar parado entre dois passos).
@@ -521,17 +521,6 @@ export function criarRota(opcoes) {
       }
       // A pausa configurada é aplicada no próximo tick (o ponto já conta como concluído).
       return { acao: "avancar", indice: indice, alvo: pontos[indice], perto: perto, pos: pos };
-    }
-
-    // Trem preso (26/11): andando com N+ monstros a até 4 sqm e sem mudar de sqm
-    // por 1,5 s, caça no lugar em vez de esperar o caminho abrir.
-    const regras = caca.config();
-    if (regras.tremMobs > 0 && cacaEsperas < MAX_ESPERAS
-        && agora - mudouEm >= TREM_PRESO_MS
-        && contarMobs(pos, mobs, TREM_RAIO) >= regras.tremMobs) {
-      const quantos = contarMobs(pos, mobs, TREM_RAIO);
-      return iniciarCaca(agora, false,
-        "preso com " + quantos + " monstros em " + pos.x + "," + pos.y + "; caçando no lugar");
     }
 
     if (agora - desde > limite) {

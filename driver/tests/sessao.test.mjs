@@ -61,6 +61,20 @@ test("contadores somam e reset limpa", () => {
   assert.equal(b.xpHora, 0);
 });
 
+test("gold de loot conta aumentos e tasks repetidas contam na sessão", () => {
+  const s = criarSessao({ agora: () => 0 });
+  s.ouroAtual(100);
+  s.ouroAtual(160);
+  s.ouroAtual(120); // compra/depósito não vira gold negativo
+  s.ouroAtual(130);
+  s.tarefaConcluida();
+  s.tarefaConcluida();
+  const a = s.snapshot();
+  assert.equal(a.ouro, 70);
+  assert.equal(a.ouroAtual, 130);
+  assert.equal(a.tasks, 2);
+});
+
 test("troca de personagem reinicia a sessão e mantém o nome", () => {
   const s = criarSessao({ agora: () => 0 });
   s.personagem("Ana");

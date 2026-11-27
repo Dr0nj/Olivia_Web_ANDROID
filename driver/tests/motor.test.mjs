@@ -29,6 +29,7 @@ function cenario(inicial, opcoes) {
     entidade: () => alvo,
     monstros: () => mobs,
     interfaceAberta: () => interfaceAberta,
+    caminavel: () => true,
   };
   if (cfg.caminavel) ponte.caminavel = cfg.caminavel;
   const motor = criarMotor({
@@ -92,6 +93,7 @@ test("não repete o mesmo ir enquanto o personagem anda", () => {
   assert.equal(quantos, 1);
 
   for (let i = 1; i <= 2; i += 1) {
+    c.mover(0, i);
     c.passar(1000);
     c.motor.tick();
   }
@@ -200,6 +202,25 @@ test("menu do jogo pausa os comandos e retoma do mesmo ponto", () => {
   assert.ok(c.enviados.slice(antes).some((m) => m.t === "ir"), "não retomou a rota");
   assert.ok(c.eventos.some((e) => e.nome === "pausa_interface"));
   assert.ok(c.eventos.some((e) => e.nome === "retomada_interface"));
+});
+
+test("monstro na frente faz desvio lateral em vez de pular o waypoint", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 });
+  c.definirMobs([{ id: 7, x: 0, y: 1 }]);
+  c.motor.iniciarRota([[0, 10]], "teste");
+
+  c.motor.tick();
+  assert.ok(c.enviados.some((m) => m.t === "ir" && m.y === 6), "não iniciou o trecho");
+
+  c.passar(1100);
+  c.motor.tick();
+
+  const desvio = c.eventos.find((e) => e.nome === "rota_desvio");
+  assert.ok(desvio, "não tentou desviar do monstro");
+  assert.equal(desvio.passo === "0,1", false, "desviou para cima do monstro");
+  assert.equal(c.eventos.some((e) => e.nome === "rota_pulou"), false);
+  assert.equal(c.motor.rota.indice(), 0, "não pode pular o waypoint");
+  assert.ok(c.enviados.some((m) => m.t === "ir" && m.x === Number(desvio.passo.split(",")[0]) && m.y === Number(desvio.passo.split(",")[1])));
 });
 
 test("voltar do segundo plano não conta o tempo parado e não pula waypoint", () => {

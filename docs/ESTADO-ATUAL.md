@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.3
+**Versão:** 0.9.4
 **Data:** 2026-11-27
-**Commit:** release v0.9.3
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.3
-**APK:** `android/app/build/olivia-web.apk` (129 KB)
+**Commit:** release v0.9.4
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.4
+**APK:** `android/app/build/olivia-web.apk` (133 KB)
 
 ## Validado
 
-- **104 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **111 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -37,6 +37,23 @@
    esperas). **Trem**: N+ monstros a até 4 sqm e preso 1,5 s caça no lugar sem pular.
 3. **UI**: botão **Ponto de caça** e dialog **Caça…** no APK; marcação/config no painel
    da página. Configuração fica em `ovw.caca` / prefs `caca*`.
+
+## Mudanças da 0.9.4 (desvio de monstro)
+
+1. **`desvio.js`**: quando o personagem fica ~1 s sem sair do sqm, procura um passo
+   lateral andável (`mapa.caminable`) que aproxime do waypoint, evitando monstros
+   próximos e células já tentadas. Ainda é um passo por vez, não uma rota completa.
+2. **Motor**: o desvio reinicia o prazo do trecho (`destravar`) e não deixa o caminho
+   virar duas tentativas e `rota_pulou`. Logs `rota_desvio`/`rota_desvio_fim`.
+3. **Limite**: sem passo lateral seguro (corredor fechado), continua valendo o
+   comportamento antigo de esperar/pular. O port completo do `WallMemory` do desktop
+   ainda não foi feito.
+4. **UI do hub**: status grande (`ANDANDO`/`PAUSA`/`STOPPED`/`CAÇANDO`), ponto atual
+   com posição, nível, volta e tempo; cartões de XP/h, XP da sessão, gold coletado,
+   previsão de suprimentos, tasks, anti-bot, stamina e voltas. Vida/mana e gráfico
+   removidos do hub; Rota/Seguir jogador/Iniciar rota/Parar ficam na mesma linha e o
+   **Log** fica no rodapé fixo. O painel ocupa toda a lateral útil do celular deitado,
+   mantendo o fundo e os contornos arredondados.
 
 ## Mudanças da 0.9.3 (performance)
 

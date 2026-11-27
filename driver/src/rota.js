@@ -399,12 +399,28 @@ export function criarRota(opcoes) {
     return situacao === "esperando" ? Math.max(0, pausaAte - agora) : 0;
   }
 
+  // Pausa configurada depois de um waypoint (Atraso...), usada no status do painel.
+  function pausaRestante(agora) {
+    return pausaAte > agora ? pausaAte - agora : 0;
+  }
+
   function definirCaca(config) {
     return caca.configurar(config);
   }
 
   // Pausa por interface do jogo: o tempo parado não conta como travamento nem
   // como "preso"; a caça recomeça o relógio no ponto em que estava.
+  // Desvio de monstro: reinicia o prazo do trecho para o desvio não virar
+  // "2 tentativas" e pular o waypoint.
+  function destravar(agora) {
+    if (situacao !== "andando") return false;
+    tentativas = 0;
+    desde = agora;
+    limite = null;
+    ultimaPos = null;
+    return true;
+  }
+
   function retomarAposInterface(agora) {
     if (situacao === "cacando") {
       const info = caca.info(agora);
@@ -550,6 +566,7 @@ export function criarRota(opcoes) {
     definirAtraso,
     atrasoConfig: () => Object.assign({}, atraso),
     definirCaca,
+    destravar,
     retomarAposInterface,
     cacaConfig: () => caca.config(),
     cacaInfo,
@@ -563,6 +580,7 @@ export function criarRota(opcoes) {
     pulados: () => Array.from(pulados),
     esperas: () => esperas,
     esperaRestante,
+    pausaRestante,
     alvo: () => (pontos[indice] ? { x: pontos[indice].x, y: pontos[indice].y } : null),
   };
 }

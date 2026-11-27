@@ -6,8 +6,10 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -33,6 +35,8 @@ import java.util.Locale;
  * elemento nenhum desta interface.
  */
 class Painel {
+    static final int LARGURA_DP = 300;
+
     interface Acoes {
         void iniciarRota(String json, boolean repetir, String atrasoJson);
         void definirCaca(String json);
@@ -70,11 +74,25 @@ class Painel {
     private final TextView estado;
     private TextView engrenagem;
     private View divisor;
-    private final TextView numeros;
-    private final TextView contadores;
-    private final TextView vida;
-    private final TextView suprimentos;
-    private final TextView desafio;
+    private final TextView statusValor;
+    private final TextView statusLinha1;
+    private final TextView statusLinha2;
+    private final TextView xpValor;
+    private final TextView xpDetalhe;
+    private final TextView xpSessaoValor;
+    private final TextView xpSessaoDetalhe;
+    private final TextView goldValor;
+    private final TextView goldDetalhe;
+    private final TextView supValor;
+    private final TextView supDetalhe;
+    private final TextView taskValor;
+    private final TextView taskDetalhe;
+    private final TextView antiValor;
+    private final TextView antiDetalhe;
+    private final TextView staminaValor;
+    private final TextView staminaDetalhe;
+    private final TextView voltaValor;
+    private final TextView voltaDetalhe;
     private final TextView nota;
     private CheckBox nao;
     private CheckBox repetir;
@@ -93,12 +111,11 @@ class Painel {
     private CheckBox reconexao;
     private EditText campoRota;
     private TextView textoRota;
+    private View rodapeFixo;
     private TextView atrasoResumo;
     private TextView atrasoResumoConfig;
     private CheckBox pausaHumana;
     private CheckBox area;
-    private Grafico grafico;
-    private long ultimoGrafico = 0;
     private String posAtual = "";
     private boolean recolhido = false;
 
@@ -131,12 +148,15 @@ class Painel {
             estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);
             if (engrenagem != null) engrenagem.setVisibility(recolhido ? View.GONE : View.VISIBLE);
             if (divisor != null) divisor.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (rodapeFixo != null) rodapeFixo.setVisibility(recolhido ? View.GONE : View.VISIBLE);
             ViewGroup.LayoutParams params = raiz.getLayoutParams();
             if (params != null) {
                 if (recolhido) {
                     params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
                 } else {
-                    params.width = d(252);
+                    params.width = d(LARGURA_DP);
+                    params.height = ViewGroup.LayoutParams.MATCH_PARENT;
                 }
                 raiz.setLayoutParams(params);
             }
@@ -163,57 +183,84 @@ class Painel {
         divisor = divisorLocal;
         raiz.addView(divisorLocal, pd);
 
-        // O conteúdo pode crescer (Configurações); limita a altura da tela e rola.
-        rolagemCorpo = new ScrollView(ctx) {
-            @Override
-            protected void onMeasure(int largura, int altura) {
-                int limite = ctx.getResources().getDisplayMetrics().heightPixels - d(92);
-                if (limite < d(140)) limite = d(140);
-                super.onMeasure(largura, View.MeasureSpec.makeMeasureSpec(limite, View.MeasureSpec.AT_MOST));
-            }
-        };
+        // O painel ocupa a lateral útil inteira; o conteúdo rola dentro dela.
+        rolagemCorpo = new ScrollView(ctx);
         rolagemCorpo.setFillViewport(false);
         rolagemCorpo.setVerticalScrollBarEnabled(true);
         rolagemCorpo.setOverScrollMode(View.OVER_SCROLL_NEVER);
         rolagemCorpo.addView(corpo);
-        raiz.addView(rolagemCorpo);
+        LinearLayout.LayoutParams pr = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        raiz.addView(rolagemCorpo, pr);
+
+        // Rodapé fixo, sempre no pé da lateral.
+        LinearLayout rodape = linha();
+        rodape.setPadding(0, d(4), 0, 0);
+        nota = texto("", 8.6f, Color.rgb(111, 138, 156), false);
+        nota.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        nota.setOnClickListener(v -> dialogoLog());
+        rodape.addView(nota);
+        rodape.addView(botao("Log", v -> dialogoLog()));
+        rodapeFixo = rodape;
+        raiz.addView(rodape);
 
         telaHub = new LinearLayout(ctx);
         telaHub.setOrientation(LinearLayout.VERTICAL);
         corpo.addView(telaHub);
 
-        numeros = texto("sessão atual 00:00 · xp/h 0", 9.5f, Color.rgb(159, 179, 194), false);
-        contadores = texto("pontos 0 · voltas 0 · mortes 0", 9.5f, Color.rgb(159, 179, 194), false);
-        vida = texto("nv — · vida — · mana —", 9.5f, Color.rgb(159, 179, 194), false);
-        suprimentos = texto("poções —", 9.5f, Color.rgb(159, 179, 194), false);
-        desafio = texto("desafio 0/0 · parada", 9.5f, Color.rgb(207, 227, 242), false);
-        telaHub.addView(numeros);
-        grafico = new Grafico(ctx);
-        LinearLayout.LayoutParams pg = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, d(46));
-        pg.topMargin = d(3);
-        telaHub.addView(grafico, pg);
-        telaHub.addView(contadores);
-        telaHub.addView(vida);
-        telaHub.addView(suprimentos);
-        telaHub.addView(desafio);
+        int ciano = Color.rgb(143, 211, 255);
+        int verde = Color.rgb(155, 240, 122);
+        int roxo = Color.rgb(211, 159, 255);
+        int amarelo = Color.rgb(242, 198, 91);
+        int vermelho = Color.rgb(255, 107, 127);
+        int suave = Color.rgb(159, 179, 194);
+
+        statusValor = texto("STOPPED", 16f, suave, true);
+        statusLinha1 = texto("sem rota", 9.2f, Color.rgb(207, 227, 242), false);
+        statusLinha2 = texto("—", 8.2f, suave, false);
+        LinearLayout cardStatus = cartao("STATUS DA ROTA", statusValor, statusLinha1, ciano);
+        cardStatus.addView(statusLinha2);
+        telaHub.addView(cardStatus);
 
         LinearLayout botoes = linha();
         botoes.setPadding(0, d(4), 0, 0);
-        botoes.addView(botao("Rota", v -> abrirTelaRota()));
-        botoes.addView(botao("Seguir jogador", v -> abrirTelaSeguir()));
-        botoes.addView(botao("Parar", v -> acoes.parar()));
+        botoes.addView(botaoHub("Rota", v -> abrirTelaRota()));
+        botoes.addView(botaoHub("Seguir jogador", v -> abrirTelaSeguir()));
+        botoes.addView(botaoHub("Iniciar rota", v -> iniciarRotaSalva()));
+        botoes.addView(botaoHub("Parar", v -> acoes.parar()));
         telaHub.addView(botoes);
 
-        LinearLayout rodape = linha();
-        rodape.setPadding(0, d(3), 0, 0);
-        nota = texto("", 8.8f, Color.rgb(111, 138, 156), false);
-        nota.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        nota.setOnClickListener(v -> dialogoLog());
-        rodape.addView(nota);
-        rodape.addView(botao("Resetar sessão", v -> acoes.zerar()));
-        rodape.addView(botao("log", v -> dialogoLog()));
-        telaHub.addView(rodape);
+        xpValor = texto("—", 15.5f, ciano, true);
+        xpDetalhe = texto(" ", 8.2f, suave, false);
+        xpSessaoValor = texto("—", 15.5f, ciano, true);
+        xpSessaoDetalhe = texto(" ", 8.2f, suave, false);
+        telaHub.addView(linhaCartoes(
+                cartao("XP / HORA", xpValor, xpDetalhe, ciano),
+                cartao("XP DA SESSÃO", xpSessaoValor, xpSessaoDetalhe, ciano)));
+
+        goldValor = texto("—", 15.5f, verde, true);
+        goldDetalhe = texto(" ", 8.2f, suave, false);
+        supValor = texto("—", 15.5f, amarelo, true);
+        supDetalhe = texto(" ", 8.2f, suave, false);
+        telaHub.addView(linhaCartoes(
+                cartao("GOLD COLETADO", goldValor, goldDetalhe, verde),
+                cartao("SUPRIMENTOS", supValor, supDetalhe, amarelo)));
+
+        taskValor = texto("—", 15.5f, roxo, true);
+        taskDetalhe = texto(" ", 8.2f, suave, false);
+        antiValor = texto("—", 15.5f, ciano, true);
+        antiDetalhe = texto(" ", 8.2f, suave, false);
+        telaHub.addView(linhaCartoes(
+                cartao("TASKS", taskValor, taskDetalhe, roxo),
+                cartao("ANTI-BOT", antiValor, antiDetalhe, ciano)));
+
+        staminaValor = texto("—", 15.5f, suave, true);
+        staminaDetalhe = texto(" ", 8.2f, suave, false);
+        voltaValor = texto("—", 15.5f, verde, true);
+        voltaDetalhe = texto(" ", 8.2f, suave, false);
+        telaHub.addView(linhaCartoes(
+                cartao("STAMINA", staminaValor, staminaDetalhe, suave),
+                cartao("VOLTAS", voltaValor, voltaDetalhe, verde)));
 
         telaRota = montarTelaRota();
         corpo.addView(telaRota);
@@ -464,6 +511,12 @@ class Painel {
                 + "Hunt Assist (o alvo sozinho do jogo fica desligado).",
                 8.5f, Color.rgb(111, 138, 156), false));
 
+        LinearLayout ferramentas = linha();
+        ferramentas.setPadding(0, d(6), 0, 0);
+        ferramentas.addView(botao("Resetar sessão", v -> acoes.zerar()));
+        ferramentas.addView(botao("Log", v -> dialogoLog()));
+        tela.addView(ferramentas);
+
         LinearLayout volta = linha();
         volta.setPadding(0, d(5), 0, 0);
         volta.addView(botao("Voltar", v -> voltarHub()));
@@ -475,9 +528,9 @@ class Painel {
 
     View raiz() {
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(
-                d(252), ViewGroup.LayoutParams.WRAP_CONTENT);
+                d(LARGURA_DP), ViewGroup.LayoutParams.MATCH_PARENT);
         p.gravity = Gravity.TOP | Gravity.START;
-        p.setMargins(d(4), d(4), 0, 0);
+        p.setMargins(d(4), d(4), 0, d(4));
         raiz.setLayoutParams(p);
         raiz.postDelayed(this::restaurarPosicao, 300);
         return raiz;
@@ -1007,6 +1060,25 @@ class Painel {
         nota("removeu " + (caca ? "ponto de caça " : "") + x + "," + y);
     }
 
+    /** Inicia a última rota salva direto do hub, sem abrir a tela de edição. */
+    private void iniciarRotaSalva() {
+        String bruto = prefs.getString("rota", "").trim();
+        try {
+            JSONArray lista = new JSONArray(bruto);
+            if (lista.length() == 0) throw new Exception("rota vazia");
+            String normal = lista.toString();
+            prefs.edit().putString("rota", normal).apply();
+            acoes.definirCaca(cacaJson());
+            acoes.iniciarRota(normal, repetir.isChecked(), atrasoJson());
+            voltarHub();
+            nota("rota iniciada · " + lista.length() + " pontos"
+                    + (repetir.isChecked() ? " · repetindo" : ""));
+        } catch (Exception e) {
+            nota("nenhuma rota salva; monte a rota primeiro");
+            abrirTelaRota();
+        }
+    }
+
     private void iniciarRotaDaTela() {
         String bruto = campoRota.getText().toString().trim();
         try {
@@ -1035,101 +1107,119 @@ class Painel {
             JSONObject ondaJson = s.optJSONObject("onda");
             boolean ondaAtiva = ondaJson != null && ondaJson.optBoolean("ligado", false);
 
-            String situacaoRota = s.has("rota") && s.optJSONObject("rota") != null
-                    ? s.optJSONObject("rota").optString("situacao", "") : "";
+            String situacaoRota = rota != null ? rota.optString("situacao", "") : "";
             boolean pausaUi = s.optBoolean("pausaUi", false);
-            estado.setText(pausaUi
-                    ? "menu do jogo · pausado"
-                    : "seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
-                    ? "seguindo " + s.optString("seguir") + (ondaAtiva ? " · onda" : "")
-                    : ("rota".equals(modo) && "esperando".equals(situacaoRota)
-                    ? "rota · esperando"
-                    : "rota".equals(modo) && "cacando".equals(situacaoRota)
-                    ? "rota · caça"
-                    : modo));
-            // Mantém o cabeçalho coerente com o estado recolhido.
-            estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);
-            if (engrenagem != null) engrenagem.setVisibility(recolhido ? View.GONE : View.VISIBLE);
-            if (divisor != null) divisor.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            long pausaRota = s.optLong("pausa", 0);
+            int totalRota = rota != null ? rota.optInt("total", 0) : 0;
+            int indiceRota = rota != null ? Math.min(rota.optInt("indice", 0) + 1, totalRota) : 0;
+            int voltaRota = rota != null ? rota.optInt("volta", 0) : 0;
+            int nivel = jogo != null && jogo.has("nivel") && !jogo.isNull("nivel")
+                    ? jogo.optInt("nivel", 0) : 0;
+            JSONObject alvoRota = rota != null ? rota.optJSONObject("alvo") : null;
 
-            if (rota != null) {
-                int total = rota.optInt("total", 0);
-                int indice = Math.min(rota.optInt("indice", 0) + 1, total);
-                String situacao = rota.optString("situacao", "");
-                int volta = rota.optInt("volta", 0);
-                String alvo = total > 0
-                        ? " · ponto " + indice + "/" + total + " · volta " + volta
-                        : "";
-                long pausa = s.optLong("pausa", 0);
-                String espera = pausa > 0 ? " · pausa " + Math.round(pausa / 1000.0) + "s" : "";
-                JSONObject caca = rota.optJSONObject("caca");
-                String cacaTexto = caca != null && caca.optBoolean("ativo", false)
-                        ? " · caça " + Math.round(caca.optLong("tempoMs", 0) / 1000.0)
-                        + "s (" + caca.optInt("perto", 0) + " mobs)"
-                        : "";
-                desafio.setText("desafio " + (sessao != null ? sessao.optInt("antiBot", 0) : 0)
-                        + "/" + (sessao != null ? sessao.optInt("janelas", 0) : 0)
-                        + alvo + (situacao.isEmpty() ? "" : " · " + situacao)
-                        + cacaTexto + espera);
-                if (rota.optInt("total", 0) > 0
-                        && repetir.isChecked() != rota.optBoolean("repetir", true)) {
-                    repetir.setChecked(rota.optBoolean("repetir", true));
-                }
+            String status;
+            int corStatus;
+            if ("parada".equals(modo)) {
+                status = "STOPPED";
+                corStatus = Color.rgb(255, 107, 127);
+            } else if (pausaUi || pausaRota > 0
+                    || "esperando".equals(situacaoRota) || "pausada".equals(situacaoRota)) {
+                status = "PAUSA";
+                corStatus = Color.rgb(242, 198, 91);
+            } else if ("cacando".equals(situacaoRota)) {
+                status = "CAÇANDO";
+                corStatus = Color.rgb(211, 159, 255);
+            } else if ("seguir".equals(modo)) {
+                status = "SEGUINDO";
+                corStatus = Color.rgb(143, 211, 255);
+            } else {
+                status = "ANDANDO";
+                corStatus = Color.rgb(155, 240, 122);
+            }
+            statusValor.setText(status);
+            statusValor.setTextColor(corStatus);
+
+            String ponto = totalRota > 0
+                    ? "ponto " + indiceRota + "/" + totalRota
+                    : "sem rota";
+            if (alvoRota != null) {
+                ponto += " · " + alvoRota.optInt("x", 0) + "," + alvoRota.optInt("y", 0);
+            }
+            statusLinha1.setText((nivel > 0 ? "nv " + nivel + " · " : "") + ponto);
+
+            long duracao = sessao != null ? sessao.optLong("duracaoMs", 0) : 0;
+            int voltas = sessao != null ? sessao.optInt("voltas", 0) : voltaRota;
+            String pausaTexto = pausaRota > 0
+                    ? " · pausa " + Math.round(pausaRota / 1000.0) + "s"
+                    : pausaUi ? " · menu aberto" : "";
+            statusLinha2.setText("volta " + voltas + " · " + tempo(duracao) + pausaTexto);
+
+            long xpHora = sessao != null ? sessao.optLong("xpHora", 0) : 0;
+            xpValor.setText(numero(xpHora));
+            xpDetalhe.setText("média da sessão");
+            long xpSessao = sessao != null ? sessao.optLong("xp", 0) : 0;
+            xpSessaoValor.setText(numero(xpSessao));
+            xpSessaoDetalhe.setText("XP ganho");
+
+            long goldTotal = sessao != null ? sessao.optLong("ouro", 0) : 0;
+            goldValor.setText(numero(goldTotal));
+            long goldAgora = sup != null ? sup.optLong("oro", 0) : 0;
+            goldDetalhe.setText("agora " + numero(goldAgora));
+
+            double minSup = sup != null ? sup.optDouble("restanteMin", -1) : -1;
+            if (sup != null && !sup.isNull("restanteMin") && minSup > 0) {
+                supValor.setText(tempoSuprimento(minSup));
+            } else {
+                supValor.setText("—");
+            }
+            long consumoHora = sup != null ? Math.round(sup.optDouble("consumoHora", 0)) : 0;
+            supDetalhe.setText(consumoHora > 0 ? numero(consumoHora) + "/h" : "coletando…");
+
+            int tasks = sessao != null ? sessao.optInt("tasks", 0) : 0;
+            taskValor.setText(numero(tasks));
+            taskDetalhe.setText("repetidas");
+            int anti = sessao != null ? sessao.optInt("antiBot", 0) : 0;
+            antiValor.setText(numero(anti));
+            antiDetalhe.setText("respostas");
+
+            double est = jogo != null ? jogo.optDouble("estamina", Double.NaN) : Double.NaN;
+            if (Double.isNaN(est)) {
+                staminaValor.setText("—");
+                staminaValor.setTextColor(Color.rgb(159, 179, 194));
+                staminaDetalhe.setText("sem leitura");
+            } else {
+                staminaValor.setText(staminaTexto(est));
+                staminaValor.setTextColor(est >= 40 ? Color.rgb(155, 240, 122)
+                        : est >= 30 ? Color.rgb(242, 198, 91) : Color.rgb(255, 107, 127));
+                staminaDetalhe.setText(est >= 40 ? "cheia" : est >= 30 ? "normal" : "baixa");
             }
 
+            voltaValor.setText(numero(voltas));
+            voltaDetalhe.setText("completas");
+
             if (jogo != null) {
-                String stam = "";
-                double est = jogo.optDouble("estamina", Double.NaN);
-                if (!Double.isNaN(est)) {
-                    stam = " · " + String.format(Locale.getDefault(), "%.1f", est) + "h";
+                JSONObject pos = jogo.optJSONObject("pos");
+                if (pos != null) {
+                    posAtual = "[[" + pos.optInt("x", 0) + "," + pos.optInt("y", 0) + "]]";
                 }
-                String nv = jogo.has("nivel") && !jogo.isNull("nivel") ? "nv " + jogo.optInt("nivel", 0) : "nv —";
-                vida.setText(nv
-                        + " · vida " + jogo.optInt("vida", 0) + "/" + jogo.optInt("vidaMax", 0)
-                        + " · mana " + jogo.optInt("mana", 0) + "/" + jogo.optInt("manaMax", 0)
-                        + stam
-                        + (jogo.optBoolean("vivo", true) ? "" : " · MORTO"));
                 if (jogo.optBoolean("emJogo", false) && "fora do jogo".equals(nota.getText().toString())) {
                     nota.setText("");
                 }
             }
 
-            if (sessao != null) {
-                String onde = "";
-                if (jogo != null) {
-                    JSONObject pos = jogo.optJSONObject("pos");
-                    if (pos != null) {
-                        onde = " · " + pos.optInt("x", 0) + "," + pos.optInt("y", 0);
-                        posAtual = "[[" + pos.optInt("x", 0) + "," + pos.optInt("y", 0) + "]]";
-                    }
-                }
-                numeros.setText("sessão atual " + tempo(sessao.optLong("duracaoMs", 0))
-                        + " · xp/h " + String.format(Locale.getDefault(), "%,d", sessao.optLong("xpHora", 0))
-                        + onde);
-                contadores.setText("pontos " + sessao.optInt("pontos", 0)
-                        + " · voltas " + sessao.optInt("voltas", 0)
-                        + " · mortes " + sessao.optInt("mortes", 0));
-                if (grafico != null) {
-                    long agora = System.currentTimeMillis();
-                    if (agora - ultimoGrafico >= 5000) {
-                        ultimoGrafico = agora;
-                        grafico.adicionar((float) sessao.optLong("xpHora", 0));
-                    }
-                }
+            if (rota != null && totalRota > 0
+                    && repetir.isChecked() != rota.optBoolean("repetir", true)) {
+                repetir.setChecked(rota.optBoolean("repetir", true));
             }
 
-            if (sup != null) {
-                String resto = "";
-                double min = sup.optDouble("restanteMin", -1);
-                if (min > 0 && !sup.isNull("restanteMin")) {
-                    resto = min >= 60
-                            ? " · ~" + String.format(Locale.getDefault(), "%.1f", min / 60.0) + "h"
-                            : " · ~" + Math.round(min) + "min";
-                }
-                suprimentos.setText("poções " + sup.optInt("vida", 0) + " vida · "
-                        + sup.optInt("mana", 0) + " mana"
-                        + " · " + sup.optInt("itens", 0) + " itens" + resto);
-            }
+            estado.setText(pausaUi ? "menu do jogo · pausado"
+                    : "seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
+                    ? "seguindo " + s.optString("seguir") + (ondaAtiva ? " · onda" : "")
+                    : modo);
+            // Mantém o cabeçalho coerente com o estado recolhido.
+            estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (engrenagem != null) engrenagem.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (divisor != null) divisor.setVisibility(recolhido ? View.GONE : View.VISIBLE);
 
             if (antibot != null) {
                 boolean ligado = antibot.optBoolean("ligado", true);
@@ -1417,6 +1507,49 @@ class Painel {
         return l;
     }
 
+    /** Cartão compacto do hub: título pequeno, valor e detalhe. */
+    private LinearLayout cartao(String titulo, TextView valor, TextView detalhe, int cor) {
+        LinearLayout card = new LinearLayout(ctx);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable fundo = new GradientDrawable();
+        fundo.setColor(Color.argb(205, 12, 20, 27));
+        fundo.setCornerRadius(d(9));
+        fundo.setStroke(Math.max(1, d(1)), Color.argb(85, 61, 85, 102));
+        card.setBackground(fundo);
+        card.setPadding(d(7), d(5), d(7), d(5));
+
+        TextView tituloView = texto(titulo, 7.8f, Color.argb(220, 111, 138, 156), true);
+        tituloView.setLetterSpacing(0.06f);
+        card.addView(tituloView);
+
+        valor.setTextSize(15.5f);
+        valor.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        valor.setSingleLine(true);
+        valor.setEllipsize(TextUtils.TruncateAt.END);
+        valor.setPadding(0, d(1), 0, 0);
+        card.addView(valor);
+
+        detalhe.setTextSize(8.2f);
+        detalhe.setTextColor(Color.rgb(159, 179, 194));
+        detalhe.setSingleLine(true);
+        detalhe.setEllipsize(TextUtils.TruncateAt.END);
+        card.addView(detalhe);
+        return card;
+    }
+
+    private LinearLayout linhaCartoes(LinearLayout esquerda, LinearLayout direita) {
+        LinearLayout linha = linha();
+        linha.setPadding(0, d(4), 0, 0);
+        linha.setBaselineAligned(false);
+        LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, d(52), 1f);
+        p1.rightMargin = d(3);
+        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, d(52), 1f);
+        p2.leftMargin = d(3);
+        linha.addView(esquerda, p1);
+        linha.addView(direita, p2);
+        return linha;
+    }
+
     private TextView texto(String t, float tamanho, int cor, boolean negrito) {
         TextView v = new TextView(ctx);
         v.setText(t);
@@ -1452,6 +1585,20 @@ class Painel {
         return b;
     }
 
+    /** Botão compacto: quatro cabem na largura da lateral sem quebrar linha. */
+    private Button botaoHub(String t, View.OnClickListener aoClicar) {
+        Button b = botao(t, aoClicar);
+        b.setTextSize(7.8f);
+        b.setPadding(d(2), d(4), d(2), d(4));
+        b.setSingleLine(true);
+        b.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        p.setMargins(d(1), 0, d(1), 0);
+        b.setLayoutParams(p);
+        return b;
+    }
+
     private void estilizarCaixa(CheckBox c) {
         if (Build.VERSION.SDK_INT >= 21) {
             c.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.rgb(95, 211, 255)));
@@ -1460,6 +1607,28 @@ class Painel {
 
     private int d(int dp) {
         return Math.round(dp * ctx.getResources().getDisplayMetrics().density);
+    }
+
+    private static String numero(long valor) {
+        return String.format(Locale.getDefault(), "%,d", valor);
+    }
+
+    /** Minutos restantes estimados -> "~1h 20" / "~12min". */
+    private static String tempoSuprimento(double minutos) {
+        if (!(minutos > 0)) return "—";
+        long total = Math.round(minutos);
+        if (total >= 60) {
+            long h = total / 60;
+            long m = total % 60;
+            return m == 0 ? "~" + h + "h" : "~" + h + "h " + m;
+        }
+        return "~" + Math.max(1, total) + "min";
+    }
+
+    /** Stamina do jogo vem em horas decimais; mostra h:mm. */
+    private static String staminaTexto(double horas) {
+        long totalMin = Math.max(0, Math.round(horas * 60));
+        return String.format(Locale.getDefault(), "%d:%02d", totalMin / 60, totalMin % 60);
     }
 
     private static String tempo(long ms) {

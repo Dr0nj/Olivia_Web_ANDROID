@@ -89,6 +89,13 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   - **não coleta nada**: sem `cobrar` e sem resgatar missão (o resgate competia com a
     repetição e fechava a task);
   - desligado: os popups ficam para você.
+- **Desvio de monstro**: se ficar ~1 s sem sair do sqm enquanto tenta andar, testa um
+  passo lateral andável evitando os monstros próximos, reinicia o prazo do trecho e
+  continua; não pula o waypoint só porque um mob está na frente. Logs `rota_desvio`/`rota_desvio_fim`.
+- **Hub**: status da rota (`ANDANDO`/`PAUSA`/`STOPPED`/`CAÇANDO`) com waypoint e posição,
+  nível, volta e tempo; cartões de XP/h, XP da sessão, gold coletado, previsão de
+  suprimentos, tasks repetidas, anti-bot, stamina e voltas. Vida/mana e gráfico saíram
+  da tela principal.
 - **Menus do jogo**: ao abrir opções/inventário/RTC/task, o Olivia **pausa os comandos**
   e para de varrer monstros/persistir estado; ao fechar, retoma o mesmo ponto. O watchdog
   do APK **não reinjeta mais o driver** enquanto a thread JS está ocupada num menu — era
@@ -147,7 +154,7 @@ driver/src/                   motor JS
   antibot.js                  resposta “Não” + contadores
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 104 testes (node --test)
+driver/tests/                 111 testes (node --test)
 src/olivia-web.user.js        protótipo antigo (só anti-bot), superado por driver/ + dist/
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -162,7 +169,7 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 104 testes
+node --test driver\tests                 # 111 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 

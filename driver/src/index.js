@@ -229,6 +229,7 @@ import { CACA_PADRAO } from "./caca.js";
     const agora = Date.now();
     if (sup) {
       motor.suprimentos.registrar(sup.vida + sup.mana, agora);
+      motor.sessao.ouroAtual(sup.oro);
     }
     return {
       modo: motor.modo(),
@@ -242,6 +243,7 @@ import { CACA_PADRAO } from "./caca.js";
         situacao: motor.rota.situacao(),
         volta: motor.rota.volta(),
         repetir: motor.rota.repetir(),
+        alvo: motor.rota.alvo(),
         caca: motor.cacaInfo(),
       },
       caca: motor.rota.cacaConfig(),
@@ -278,6 +280,7 @@ import { CACA_PADRAO } from "./caca.js";
     if (!autoTarefas) return; // usuário desligou o automático
     // Envia primeiro (o que importa) e fecha o diálogo em seguida.
     ponte.enviar({ t: "tarea", id: Number(m.id), accion: "repetir" });
+    motor.sessao.tarefaConcluida();
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;

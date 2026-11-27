@@ -5,6 +5,7 @@ import { criarHumano } from "./humano.js";
 import { criarRota } from "./rota.js";
 import { criarSeguidor } from "./seguidor.js";
 import { criarSuprimentos } from "./suprimentos.js";
+import { planejarDesvio } from "./desvio.js";
 
 export function criarMotor(opcoes) {
   const cfg = Object.assign({
@@ -15,6 +16,9 @@ export function criarMotor(opcoes) {
     // Andamos em trechos de 6 para folga.
     passoTiles: 6,
     intervaloMinimoMs: 400,
+    // Tempo parado antes de tratar a célula da frente como ocupada por monstro.
+    paradoDesvioMs: 1000,
+    desvioDuracaoMs: 2200,
     agora: () => Date.now(),
   }, opcoes || {});
 
@@ -39,6 +43,12 @@ export function criarMotor(opcoes) {
   let emCaca = false;
   // Interface aberta: pausa comandos e atualizações pesadas até o jogador fechar.
   let pausaInterface = false;
+  // Desvio de monstro: um passo lateral por vez, sem pular o waypoint.
+  let desvio = null;
+  let ultimaPosDesvio = null;
+  let paradoDesde = 0;
+  let alvoRotaPedido = "";
+  const desvioBloqueado = new Map();
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -47,6 +57,9 @@ export function criarMotor(opcoes) {
     if (!forcar && ultimoAlvo !== "" && agora - ultimoEnvio < cfg.intervaloMinimoMs) return false;
     ultimoAlvo = chave;
     ultimoEnvio = agora;
+    // O relógio de "parado" começa no comando, não enquanto o Olivia espera
+    // parado num ponto de caça/pausa.
+    paradoDesde = agora;
     return cfg.ponte.enviar({ t: "ir", x: x, y: y });
   }
 
@@ -75,6 +88,48 @@ export function criarMotor(opcoes) {
     return trecho.alvo;
   }
 
+  function limparDesvio() {
+    desvio = null;
+    desvioBloqueado.clear();
+  }
+
+  function atualizarParado(pos, agora) {
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+    if (!ultimaPosDesvio || ultimaPosDesvio.x !== pos.x || ultimaPosDesvio.y !== pos.y) {
+      ultimaPosDesvio = { x: pos.x, y: pos.y };
+      paradoDesde = agora;
+    }
+  }
+
+  // Um passo lateral que aproxime do waypoint, evitando monstros e células já
+  // tentadas. Não pula waypoint: só reinicia o prazo e tenta de novo pelo lado.
+  function tentarDesvio(pos, destino, mobs, agora) {
+    if (!cfg.ponte.caminavel || !pos || !destino) return null;
+    for (const [k, ate] of desvioBloqueado) {
+      if (ate <= agora) desvioBloqueado.delete(k);
+    }
+    const passo = planejarDesvio(pos, destino, cfg.ponte.caminavel, mobs, {
+      bloqueados: new Set(desvioBloqueado.keys()),
+    });
+    if (!passo) return null;
+    desvioBloqueado.set(passo.x + "," + passo.y, agora + 3000);
+    desvio = {
+      x: passo.x,
+      y: passo.y,
+      ate: agora + cfg.desvioDuracaoMs,
+      alvo: destino.x + "," + destino.y,
+      enviadoEm: 0,
+    };
+    rota.destravar(agora);
+    registro.evento("rota_desvio", {
+      de: pos.x + "," + pos.y,
+      passo: passo.x + "," + passo.y,
+      alvo: destino.x + "," + destino.y,
+      mobs: Array.isArray(mobs) ? mobs.length : 0,
+    });
+    return passo;
+  }
+
   function iniciarRota(pontos, origem, opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
@@ -92,6 +147,10 @@ export function criarMotor(opcoes) {
     ultimoMotivoParada = null;
     emCaca = false;
     pausaInterface = false;
+    limparDesvio();
+    ultimaPosDesvio = null;
+    paradoDesde = cfg.agora();
+    alvoRotaPedido = "";
     const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
@@ -118,6 +177,7 @@ export function criarMotor(opcoes) {
     trecho = null;
     ultimoGiro = 0;
     pausaInterface = false;
+    limparDesvio();
     registro.evento("seguir_inicio", {
       alvo: seguindoId,
       sqm: seguidor.alcanceEfetivo(),
@@ -146,6 +206,10 @@ export function criarMotor(opcoes) {
     pisoRota = null;
     emCaca = false;
     pausaInterface = false;
+    limparDesvio();
+    ultimaPosDesvio = null;
+    paradoDesde = 0;
+    alvoRotaPedido = "";
     ultimoEnvio = 0;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
@@ -226,8 +290,56 @@ export function criarMotor(opcoes) {
       const manaPct = st.mana != null && st.manaMax
         ? (st.mana / st.manaMax) * 100
         : null;
+
+      atualizarParado(st.pos, agora);
+      if (desvio) {
+        const chegou = st.pos && st.pos.x === desvio.x && st.pos.y === desvio.y;
+        if (chegou || agora >= desvio.ate) {
+          const antigo = desvio;
+          desvio = null;
+          ultimoAlvo = "";
+          trecho = null;
+          rota.destravar(agora);
+          registro.evento("rota_desvio_fim", {
+            passo: antigo.x + "," + antigo.y,
+            chegou: !!chegou,
+            alvo: antigo.alvo,
+            pos: st.pos,
+          });
+        } else {
+          if (agora - desvio.enviadoEm >= 1000) {
+            desvio.enviadoEm = agora;
+            enviarIr(desvio.x, desvio.y, true);
+          }
+          return;
+        }
+      }
+
       const d = rota.passo({ pos: st.pos, agora: agora, mobs: mobs, manaPct: manaPct });
       if (!d) return;
+
+      // Alvo novo (ou retomada após pausa/caça) reinicia o relógio do desvio.
+      if (d.acao === "ir" || d.acao === "repetir") {
+        const chaveAlvo = d.x + "," + d.y;
+        if (chaveAlvo !== alvoRotaPedido) {
+          alvoRotaPedido = chaveAlvo;
+          paradoDesde = agora;
+        }
+      } else {
+        alvoRotaPedido = "";
+      }
+
+      // Não saiu do sqm por ~1 s enquanto tentava andar: provavelmente um monstro
+      // na célula da frente. Dá um passo lateral em vez de esperar e pular.
+      if ((d.acao === "ir" || d.acao === "repetir") && st.pos
+          && agora - paradoDesde >= cfg.paradoDesvioMs) {
+        const passo = tentarDesvio(st.pos, { x: d.x, y: d.y }, mobs, agora);
+        if (passo) {
+          enviarIr(passo.x, passo.y, true);
+          desvio.enviadoEm = agora;
+          return;
+        }
+      }
 
       // Ponto de caça: para o personagem e fica segurando até a rota mandar sair.
       if (d.acao === "cacar") {
@@ -370,7 +482,11 @@ export function criarMotor(opcoes) {
     pausadoAte = 0;
     ultimoEnvio = 0;
     pausaInterface = false;
+    limparDesvio();
+    ultimaPosDesvio = null;
     const agora = cfg.agora();
+    paradoDesde = agora;
+    alvoRotaPedido = "";
     if (modo === "rota") {
       rota.retomarAposInterface(agora);
     } else if (modo === "seguir" && seguindoId) {
@@ -395,7 +511,10 @@ export function criarMotor(opcoes) {
     // Presença (tecla Shift) só é necessária enquanto existe `ir` recente.
     // 8 s cobre pernas longas e o trecho de 6 tiles sem flickar a tecla.
     comandando: () => modo !== "parada" && cfg.agora() - ultimoEnvio < 8000,
-    pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
+    pausaRestante: () => {
+      const agora = cfg.agora();
+      return Math.max(0, pausadoAte - agora, rota.esperaRestante(agora), rota.pausaRestante(agora));
+    },
     ultimoMotivo: () => ultimoMotivoParada,
     rota,
     cacaInfo: () => rota.cacaInfo(cfg.agora()),

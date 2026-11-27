@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.3
+// @version      0.9.4
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -41,6 +41,9 @@ function criarSessao(opcoes) {
       inicio: cfg.agora(),
       xpVisto: null,
       xpGanho: 0,
+      ouroVisto: null,
+      ouroGanho: 0,
+      tasks: 0,
       pontos: 0,
       voltas: 0,
       antiBot: 0,
@@ -64,6 +67,18 @@ function criarSessao(opcoes) {
     if (valor >= estado.xpVisto) estado.xpGanho += valor - estado.xpVisto;
     else estado.xpGanho += valor;
     estado.xpVisto = valor;
+  }
+
+  // Gold de loot: conta só aumentos. Compra/depósito diminui o saldo e não vira
+  // "gold coletado" negativo; o próximo aumento volta a contar a partir do novo saldo.
+  function ouroAtual(valor) {
+    if (!Number.isFinite(valor)) return;
+    if (estado.ouroVisto === null) {
+      estado.ouroVisto = valor;
+      return;
+    }
+    if (valor > estado.ouroVisto) estado.ouroGanho += valor - estado.ouroVisto;
+    estado.ouroVisto = valor;
   }
 
   function xpHora() {
@@ -95,12 +110,14 @@ function criarSessao(opcoes) {
 
   return {
     xpAtual,
+    ouroAtual,
     xpHora,
     personagem,
     reset,
     duracaoMs,
     pontoConcluido: () => { estado.pontos += 1; },
     voltaConcluida: () => { estado.voltas += 1; },
+    tarefaConcluida: () => { estado.tasks += 1; },
     janelaVista: () => { estado.janelas += 1; },
     antiBotRespondida: () => { estado.antiBot += 1; },
     morte: () => { estado.mortes += 1; },
@@ -113,6 +130,9 @@ function criarSessao(opcoes) {
       duracaoMs: duracaoMs(),
       xp: estado.xpGanho,
       xpHora: xpHora(),
+      ouro: estado.ouroGanho,
+      ouroAtual: estado.ouroVisto,
+      tasks: estado.tasks,
       pontos: estado.pontos,
       voltas: estado.voltas,
       antiBot: estado.antiBot,
@@ -779,12 +799,28 @@ function criarRota(opcoes) {
     return situacao === "esperando" ? Math.max(0, pausaAte - agora) : 0;
   }
 
+  // Pausa configurada depois de um waypoint (Atraso...), usada no status do painel.
+  function pausaRestante(agora) {
+    return pausaAte > agora ? pausaAte - agora : 0;
+  }
+
   function definirCaca(config) {
     return caca.configurar(config);
   }
 
   // Pausa por interface do jogo: o tempo parado não conta como travamento nem
   // como "preso"; a caça recomeça o relógio no ponto em que estava.
+  // Desvio de monstro: reinicia o prazo do trecho para o desvio não virar
+  // "2 tentativas" e pular o waypoint.
+  function destravar(agora) {
+    if (situacao !== "andando") return false;
+    tentativas = 0;
+    desde = agora;
+    limite = null;
+    ultimaPos = null;
+    return true;
+  }
+
   function retomarAposInterface(agora) {
     if (situacao === "cacando") {
       const info = caca.info(agora);
@@ -930,6 +966,7 @@ function criarRota(opcoes) {
     definirAtraso,
     atrasoConfig: () => Object.assign({}, atraso),
     definirCaca,
+    destravar,
     retomarAposInterface,
     cacaConfig: () => caca.config(),
     cacaInfo,
@@ -943,6 +980,7 @@ function criarRota(opcoes) {
     pulados: () => Array.from(pulados),
     esperas: () => esperas,
     esperaRestante,
+    pausaRestante,
     alvo: () => (pontos[indice] ? { x: pontos[indice].x, y: pontos[indice].y } : null),
   };
 }
@@ -1426,6 +1464,118 @@ function criarArea(opcoes) {
 }
 
 
+// Desvio local de monstro, inspirado no "occupied_detour" do WaypointController
+// do desktop: quando o personagem não sai do lugar, a célula da frente está
+// ocupada. Em vez de pular o waypoint, procura um vizinho andável que aproxime
+// do destino e manda o `ir` para ele. A próxima leitura do estado reavalia.
+//
+// É puro: recebe `caminhavel(x,y)` e a lista de monstros. Não conhece Red/J.
+
+const DIRECOES = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+function chave(x, y) {
+  return x + "," + y;
+}
+
+function cheb(a, b) {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+function manhattan(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+/**
+ * Retorna o primeiro sqm de um desvio curto até um vizinho que aproxime do
+ * destino, ou null se não há desvio melhor.
+ * opcoes: { raio=5, passos=4, bloqueados=Set }
+ */
+function planejarDesvio(pos, destino, caminhavel, monstros, opcoes) {
+  if (!pos || !destino || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)
+      || !Number.isFinite(destino.x) || !Number.isFinite(destino.y)) return null;
+  const cfg = Object.assign({ raio: 5, passos: 4, raioMonstros: 3, bloqueados: null }, opcoes || {});
+  const bloqueados = cfg.bloqueados instanceof Set ? cfg.bloqueados : new Set();
+  const ocupados = new Set();
+  for (const m of Array.isArray(monstros) ? monstros : []) {
+    if (!m || !Number.isFinite(m.x) || !Number.isFinite(m.y)) continue;
+    if (Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= cfg.raioMonstros) {
+      ocupados.add(chave(m.x, m.y));
+    }
+  }
+
+  const inicio = { x: Math.round(pos.x), y: Math.round(pos.y) };
+  const alvo = { x: Math.round(destino.x), y: Math.round(destino.y) };
+  const pode = function (x, y) {
+    if (Math.abs(x - inicio.x) > cfg.raio || Math.abs(y - inicio.y) > cfg.raio) return false;
+    if (x === inicio.x && y === inicio.y) return true;
+    const k = chave(x, y);
+    if (bloqueados.has(k) || ocupados.has(k)) return false;
+    try {
+      return caminhavel ? !!caminhavel(x, y) : true;
+    } catch (e) {
+      return true;
+    }
+  };
+
+  const fila = [inicio];
+  const anterior = new Map([[chave(inicio.x, inicio.y), null]]);
+  const passos = new Map([[chave(inicio.x, inicio.y), 0]]);
+  let melhor = null;
+  let melhorNota = null;
+  const nota = function (c) {
+    return [cheb(c, alvo), manhattan(c, alvo), passos.get(chave(c.x, c.y))];
+  };
+  const menor = function (a, b) {
+    if (!b) return true;
+    for (let i = 0; i < a.length; i += 1) {
+      if (a[i] !== b[i]) return a[i] < b[i];
+    }
+    return false;
+  };
+
+  while (fila.length) {
+    const atual = fila.shift();
+    const d = passos.get(chave(atual.x, atual.y));
+    if (!(atual.x === inicio.x && atual.y === inicio.y)) {
+      const n = nota(atual);
+      if (menor(n, melhorNota)) {
+        melhor = atual;
+        melhorNota = n;
+      }
+    }
+    if (d >= cfg.passos) continue;
+    for (const [dx, dy] of DIRECOES) {
+      const nx = atual.x + dx;
+      const ny = atual.y + dy;
+      const k = chave(nx, ny);
+      if (!pode(nx, ny) || anterior.has(k)) continue;
+      anterior.set(k, chave(atual.x, atual.y));
+      passos.set(k, d + 1);
+      fila.push({ x: nx, y: ny });
+    }
+  }
+
+  if (!melhor) return null;
+  const notaInicio = [cheb(inicio, alvo), manhattan(inicio, alvo), 0];
+  if (!menor(melhorNota, notaInicio)) return null;
+
+  // Reconstrói do melhor até o início e devolve o primeiro passo.
+  let atual = melhor;
+  let pai = anterior.get(chave(atual.x, atual.y));
+  while (pai && pai !== chave(inicio.x, inicio.y)) {
+    const [px, py] = pai.split(",").map(Number);
+    atual = { x: px, y: py };
+    pai = anterior.get(pai);
+  }
+  return { x: atual.x, y: atual.y };
+}
+
+
 // Estimativa de consumo de suprimentos (poções/runas) a partir da contagem do inventário.
 function criarSuprimentos(opcoes) {
   const cfg = Object.assign({
@@ -1596,6 +1746,9 @@ function criarPonteNavegador() {
     const y = ent && Number.isFinite(ent.y) ? ent.y : yo && Number.isFinite(yo.y) ? yo.y : null;
     const piso = ent && Number.isFinite(ent.piso) ? ent.piso : yo && Number.isFinite(yo.piso) ? yo.piso : null;
     const vida = yo && Number.isFinite(yo.vida) ? yo.vida : null;
+    // O painel do cliente guarda a stamina em segundos em `MenuLow.energia.a`.
+    const energiaSeg = w.MenuLow && w.MenuLow.energia
+      && Number.isFinite(w.MenuLow.energia.a) ? w.MenuLow.energia.a : null;
 
     // `exp` é o XP dentro do nível; `expNivel` é o XP acumulado até o nível atual.
     const expNivel = yo && Number.isFinite(yo.expNivel) ? yo.expNivel : 0;
@@ -1610,7 +1763,9 @@ function criarPonteNavegador() {
       xp: exp === null ? null : expNivel + exp,
       xpNivel: exp,
       xpProximo: yo && Number.isFinite(yo.expSig) ? yo.expSig : null,
-      estamina: yo && Number.isFinite(yo.estamina) ? yo.estamina : null,
+      estamina: energiaSeg !== null
+        ? energiaSeg / 3600
+        : yo && Number.isFinite(yo.estamina) ? yo.estamina : null,
       vida: vida,
       vidaMax: yo && Number.isFinite(yo.vidaMax) ? yo.vidaMax : null,
       mana: yo && Number.isFinite(yo.mana) ? yo.mana : null,
@@ -1827,6 +1982,9 @@ function criarMotor(opcoes) {
     // Andamos em trechos de 6 para folga.
     passoTiles: 6,
     intervaloMinimoMs: 400,
+    // Tempo parado antes de tratar a célula da frente como ocupada por monstro.
+    paradoDesvioMs: 1000,
+    desvioDuracaoMs: 2200,
     agora: () => Date.now(),
   }, opcoes || {});
 
@@ -1851,6 +2009,12 @@ function criarMotor(opcoes) {
   let emCaca = false;
   // Interface aberta: pausa comandos e atualizações pesadas até o jogador fechar.
   let pausaInterface = false;
+  // Desvio de monstro: um passo lateral por vez, sem pular o waypoint.
+  let desvio = null;
+  let ultimaPosDesvio = null;
+  let paradoDesde = 0;
+  let alvoRotaPedido = "";
+  const desvioBloqueado = new Map();
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -1859,6 +2023,9 @@ function criarMotor(opcoes) {
     if (!forcar && ultimoAlvo !== "" && agora - ultimoEnvio < cfg.intervaloMinimoMs) return false;
     ultimoAlvo = chave;
     ultimoEnvio = agora;
+    // O relógio de "parado" começa no comando, não enquanto o Olivia espera
+    // parado num ponto de caça/pausa.
+    paradoDesde = agora;
     return cfg.ponte.enviar({ t: "ir", x: x, y: y });
   }
 
@@ -1887,6 +2054,48 @@ function criarMotor(opcoes) {
     return trecho.alvo;
   }
 
+  function limparDesvio() {
+    desvio = null;
+    desvioBloqueado.clear();
+  }
+
+  function atualizarParado(pos, agora) {
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+    if (!ultimaPosDesvio || ultimaPosDesvio.x !== pos.x || ultimaPosDesvio.y !== pos.y) {
+      ultimaPosDesvio = { x: pos.x, y: pos.y };
+      paradoDesde = agora;
+    }
+  }
+
+  // Um passo lateral que aproxime do waypoint, evitando monstros e células já
+  // tentadas. Não pula waypoint: só reinicia o prazo e tenta de novo pelo lado.
+  function tentarDesvio(pos, destino, mobs, agora) {
+    if (!cfg.ponte.caminavel || !pos || !destino) return null;
+    for (const [k, ate] of desvioBloqueado) {
+      if (ate <= agora) desvioBloqueado.delete(k);
+    }
+    const passo = planejarDesvio(pos, destino, cfg.ponte.caminavel, mobs, {
+      bloqueados: new Set(desvioBloqueado.keys()),
+    });
+    if (!passo) return null;
+    desvioBloqueado.set(passo.x + "," + passo.y, agora + 3000);
+    desvio = {
+      x: passo.x,
+      y: passo.y,
+      ate: agora + cfg.desvioDuracaoMs,
+      alvo: destino.x + "," + destino.y,
+      enviadoEm: 0,
+    };
+    rota.destravar(agora);
+    registro.evento("rota_desvio", {
+      de: pos.x + "," + pos.y,
+      passo: passo.x + "," + passo.y,
+      alvo: destino.x + "," + destino.y,
+      mobs: Array.isArray(mobs) ? mobs.length : 0,
+    });
+    return passo;
+  }
+
   function iniciarRota(pontos, origem, opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
@@ -1904,6 +2113,10 @@ function criarMotor(opcoes) {
     ultimoMotivoParada = null;
     emCaca = false;
     pausaInterface = false;
+    limparDesvio();
+    ultimaPosDesvio = null;
+    paradoDesde = cfg.agora();
+    alvoRotaPedido = "";
     const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
@@ -1930,6 +2143,7 @@ function criarMotor(opcoes) {
     trecho = null;
     ultimoGiro = 0;
     pausaInterface = false;
+    limparDesvio();
     registro.evento("seguir_inicio", {
       alvo: seguindoId,
       sqm: seguidor.alcanceEfetivo(),
@@ -1958,6 +2172,10 @@ function criarMotor(opcoes) {
     pisoRota = null;
     emCaca = false;
     pausaInterface = false;
+    limparDesvio();
+    ultimaPosDesvio = null;
+    paradoDesde = 0;
+    alvoRotaPedido = "";
     ultimoEnvio = 0;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
@@ -2038,8 +2256,56 @@ function criarMotor(opcoes) {
       const manaPct = st.mana != null && st.manaMax
         ? (st.mana / st.manaMax) * 100
         : null;
+
+      atualizarParado(st.pos, agora);
+      if (desvio) {
+        const chegou = st.pos && st.pos.x === desvio.x && st.pos.y === desvio.y;
+        if (chegou || agora >= desvio.ate) {
+          const antigo = desvio;
+          desvio = null;
+          ultimoAlvo = "";
+          trecho = null;
+          rota.destravar(agora);
+          registro.evento("rota_desvio_fim", {
+            passo: antigo.x + "," + antigo.y,
+            chegou: !!chegou,
+            alvo: antigo.alvo,
+            pos: st.pos,
+          });
+        } else {
+          if (agora - desvio.enviadoEm >= 1000) {
+            desvio.enviadoEm = agora;
+            enviarIr(desvio.x, desvio.y, true);
+          }
+          return;
+        }
+      }
+
       const d = rota.passo({ pos: st.pos, agora: agora, mobs: mobs, manaPct: manaPct });
       if (!d) return;
+
+      // Alvo novo (ou retomada após pausa/caça) reinicia o relógio do desvio.
+      if (d.acao === "ir" || d.acao === "repetir") {
+        const chaveAlvo = d.x + "," + d.y;
+        if (chaveAlvo !== alvoRotaPedido) {
+          alvoRotaPedido = chaveAlvo;
+          paradoDesde = agora;
+        }
+      } else {
+        alvoRotaPedido = "";
+      }
+
+      // Não saiu do sqm por ~1 s enquanto tentava andar: provavelmente um monstro
+      // na célula da frente. Dá um passo lateral em vez de esperar e pular.
+      if ((d.acao === "ir" || d.acao === "repetir") && st.pos
+          && agora - paradoDesde >= cfg.paradoDesvioMs) {
+        const passo = tentarDesvio(st.pos, { x: d.x, y: d.y }, mobs, agora);
+        if (passo) {
+          enviarIr(passo.x, passo.y, true);
+          desvio.enviadoEm = agora;
+          return;
+        }
+      }
 
       // Ponto de caça: para o personagem e fica segurando até a rota mandar sair.
       if (d.acao === "cacar") {
@@ -2182,7 +2448,11 @@ function criarMotor(opcoes) {
     pausadoAte = 0;
     ultimoEnvio = 0;
     pausaInterface = false;
+    limparDesvio();
+    ultimaPosDesvio = null;
     const agora = cfg.agora();
+    paradoDesde = agora;
+    alvoRotaPedido = "";
     if (modo === "rota") {
       rota.retomarAposInterface(agora);
     } else if (modo === "seguir" && seguindoId) {
@@ -2207,7 +2477,10 @@ function criarMotor(opcoes) {
     // Presença (tecla Shift) só é necessária enquanto existe `ir` recente.
     // 8 s cobre pernas longas e o trecho de 6 tiles sem flickar a tecla.
     comandando: () => modo !== "parada" && cfg.agora() - ultimoEnvio < 8000,
-    pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
+    pausaRestante: () => {
+      const agora = cfg.agora();
+      return Math.max(0, pausadoAte - agora, rota.esperaRestante(agora), rota.pausaRestante(agora));
+    },
     ultimoMotivo: () => ultimoMotivoParada,
     rota,
     cacaInfo: () => rota.cacaInfo(cfg.agora()),
@@ -2854,6 +3127,7 @@ function criarPainel(opcoes) {
     const agora = Date.now();
     if (sup) {
       motor.suprimentos.registrar(sup.vida + sup.mana, agora);
+      motor.sessao.ouroAtual(sup.oro);
     }
     return {
       modo: motor.modo(),
@@ -2867,6 +3141,7 @@ function criarPainel(opcoes) {
         situacao: motor.rota.situacao(),
         volta: motor.rota.volta(),
         repetir: motor.rota.repetir(),
+        alvo: motor.rota.alvo(),
         caca: motor.cacaInfo(),
       },
       caca: motor.rota.cacaConfig(),
@@ -2903,6 +3178,7 @@ function criarPainel(opcoes) {
     if (!autoTarefas) return; // usuário desligou o automático
     // Envia primeiro (o que importa) e fecha o diálogo em seguida.
     ponte.enviar({ t: "tarea", id: Number(m.id), accion: "repetir" });
+    motor.sessao.tarefaConcluida();
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;

@@ -8,6 +8,9 @@ export function criarSessao(opcoes) {
       inicio: cfg.agora(),
       xpVisto: null,
       xpGanho: 0,
+      ouroVisto: null,
+      ouroGanho: 0,
+      tasks: 0,
       pontos: 0,
       voltas: 0,
       antiBot: 0,
@@ -31,6 +34,18 @@ export function criarSessao(opcoes) {
     if (valor >= estado.xpVisto) estado.xpGanho += valor - estado.xpVisto;
     else estado.xpGanho += valor;
     estado.xpVisto = valor;
+  }
+
+  // Gold de loot: conta só aumentos. Compra/depósito diminui o saldo e não vira
+  // "gold coletado" negativo; o próximo aumento volta a contar a partir do novo saldo.
+  function ouroAtual(valor) {
+    if (!Number.isFinite(valor)) return;
+    if (estado.ouroVisto === null) {
+      estado.ouroVisto = valor;
+      return;
+    }
+    if (valor > estado.ouroVisto) estado.ouroGanho += valor - estado.ouroVisto;
+    estado.ouroVisto = valor;
   }
 
   function xpHora() {
@@ -62,12 +77,14 @@ export function criarSessao(opcoes) {
 
   return {
     xpAtual,
+    ouroAtual,
     xpHora,
     personagem,
     reset,
     duracaoMs,
     pontoConcluido: () => { estado.pontos += 1; },
     voltaConcluida: () => { estado.voltas += 1; },
+    tarefaConcluida: () => { estado.tasks += 1; },
     janelaVista: () => { estado.janelas += 1; },
     antiBotRespondida: () => { estado.antiBot += 1; },
     morte: () => { estado.mortes += 1; },
@@ -80,6 +97,9 @@ export function criarSessao(opcoes) {
       duracaoMs: duracaoMs(),
       xp: estado.xpGanho,
       xpHora: xpHora(),
+      ouro: estado.ouroGanho,
+      ouroAtual: estado.ouroVisto,
+      tasks: estado.tasks,
       pontos: estado.pontos,
       voltas: estado.voltas,
       antiBot: estado.antiBot,

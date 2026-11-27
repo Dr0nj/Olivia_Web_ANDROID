@@ -50,6 +50,9 @@ export function criarPonteNavegador() {
     const y = ent && Number.isFinite(ent.y) ? ent.y : yo && Number.isFinite(yo.y) ? yo.y : null;
     const piso = ent && Number.isFinite(ent.piso) ? ent.piso : yo && Number.isFinite(yo.piso) ? yo.piso : null;
     const vida = yo && Number.isFinite(yo.vida) ? yo.vida : null;
+    // O painel do cliente guarda a stamina em segundos em `MenuLow.energia.a`.
+    const energiaSeg = w.MenuLow && w.MenuLow.energia
+      && Number.isFinite(w.MenuLow.energia.a) ? w.MenuLow.energia.a : null;
 
     // `exp` é o XP dentro do nível; `expNivel` é o XP acumulado até o nível atual.
     const expNivel = yo && Number.isFinite(yo.expNivel) ? yo.expNivel : 0;
@@ -64,7 +67,9 @@ export function criarPonteNavegador() {
       xp: exp === null ? null : expNivel + exp,
       xpNivel: exp,
       xpProximo: yo && Number.isFinite(yo.expSig) ? yo.expSig : null,
-      estamina: yo && Number.isFinite(yo.estamina) ? yo.estamina : null,
+      estamina: energiaSeg !== null
+        ? energiaSeg / 3600
+        : yo && Number.isFinite(yo.estamina) ? yo.estamina : null,
       vida: vida,
       vidaMax: yo && Number.isFinite(yo.vidaMax) ? yo.vidaMax : null,
       mana: yo && Number.isFinite(yo.mana) ? yo.mana : null,

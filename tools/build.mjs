@@ -13,6 +13,7 @@ const ordem = [
   "onda",
   "seguidor",
   "area",
+  "desvio",
   "suprimentos",
   "antibot",
   "ponte",

@@ -118,7 +118,7 @@ public class MainActivity extends Activity {
                         });
             }
         });
-        int larguraPainel = Math.round(252 * getResources().getDisplayMetrics().density);
+        int larguraPainel = Math.round(Painel.LARGURA_DP * getResources().getDisplayMetrics().density);
         raiz.addView(painel.raiz(), new FrameLayout.LayoutParams(
                 larguraPainel, ViewGroup.LayoutParams.WRAP_CONTENT));
 

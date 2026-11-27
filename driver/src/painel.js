@@ -40,9 +40,27 @@ export function criarPainel(opcoes) {
     const bruto = JSON.parse(texto);
     if (!Array.isArray(bruto)) throw new Error("JSON precisa ser uma lista");
     return bruto.map(function (p) {
-      if (Array.isArray(p)) return { x: Number(p[0]), y: Number(p[1]) };
-      return { x: Number(p.x), y: Number(p.y), pausaMs: Number(p.pausaMs) || 0 };
+      const hunt = Array.isArray(p)
+        ? p[2] === "h" || p[2] === true
+        : !!(p.hunt === true || p.hunt === "h" || p.caca === true || p.h === "h" || p.h === true);
+      if (Array.isArray(p)) return { x: Number(p[0]), y: Number(p[1]), pausaMs: 0, hunt: hunt };
+      return {
+        x: Number(p.x),
+        y: Number(p.y),
+        pausaMs: Number(p.pausaMs) || 0,
+        hunt: hunt,
+      };
     });
+  }
+
+  function textoRota(pontos) {
+    return JSON.stringify(pontos.map(function (p) {
+      if (!p.hunt && !(p.pausaMs > 0)) return [p.x, p.y];
+      const o = { x: p.x, y: p.y };
+      if (p.pausaMs > 0) o.pausaMs = p.pausaMs;
+      if (p.hunt) o.hunt = true;
+      return o;
+    }));
   }
 
   function montar() {
@@ -112,6 +130,42 @@ export function criarPainel(opcoes) {
     try { campoRota.value = localStorage.getItem("ovw.rota") || ""; } catch (e) {}
     raiz.appendChild(campoRota);
 
+    function marcarPonto(caca) {
+      let pos = null;
+      try {
+        const st = window.Olivia && window.Olivia.estado ? window.Olivia.estado() : null;
+        pos = st && st.jogo ? st.jogo.pos : null;
+      } catch (e) {
+        pos = null;
+      }
+      if (!pos || !Number.isInteger(pos.x) || !Number.isInteger(pos.y)) {
+        alert("Posição indisponível (fora do jogo?)");
+        return;
+      }
+      let pontos;
+      try {
+        pontos = lerRota(campoRota.value || "[]");
+      } catch (e) {
+        alert("Rota inválida: " + e.message);
+        return;
+      }
+      const ultimo = pontos[pontos.length - 1];
+      if (ultimo && ultimo.x === pos.x && ultimo.y === pos.y) {
+        if (!!ultimo.hunt === !!caca) return;
+        ultimo.hunt = !!caca;
+      } else {
+        pontos.push({ x: pos.x, y: pos.y, pausaMs: 0, hunt: !!caca });
+      }
+      campoRota.value = textoRota(pontos);
+      try { localStorage.setItem("ovw.rota", campoRota.value); } catch (e) { /* sem storage */ }
+      atualizar();
+    }
+
+    const marcar = linha({ marginTop: "4px" });
+    marcar.appendChild(botao("Marcar aqui", function () { marcarPonto(false); }));
+    marcar.appendChild(botao("Ponto de caça", function () { marcarPonto(true); }));
+    raiz.appendChild(marcar);
+
     const acoes = linha({ marginTop: "6px" });
     acoes.appendChild(botao("Iniciar", function () {
       try {
@@ -140,9 +194,79 @@ export function criarPainel(opcoes) {
     repetir.appendChild(el("span", null, "Repetir a rota"));
     raiz.appendChild(repetir);
 
+    // Configuração do ponto de caça (HuntSpotSettings do desktop).
+    const secao = document.createElement("details");
+    secao.style.marginTop = "6px";
+    const resumo = document.createElement("summary");
+    resumo.textContent = "Ponto de caça";
+    resumo.style.cursor = "pointer";
+    resumo.style.color = "#cfe3f2";
+    secao.appendChild(resumo);
+
+    const grade = el("div", {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "4px",
+      marginTop: "4px",
+    });
+    const regras = motor.rota.cacaConfig();
+    const campos = [
+      { chave: "raioLimpo", rotulo: "Livre (sqm)", min: 1, max: 7, fator: 1 },
+      { chave: "minParadoMs", rotulo: "Mínimo (s)", min: 0, max: 60, fator: 1000 },
+      { chave: "tetoMs", rotulo: "Teto (s)", min: 10, max: 900, fator: 1000 },
+      { chave: "manaMinPct", rotulo: "Mana (%)", min: 0, max: 100, fator: 1 },
+      { chave: "sairComMobs", rotulo: "Sair c/ mobs", min: 0, max: 10, fator: 1 },
+      { chave: "tremMobs", rotulo: "Trem (mobs)", min: 0, max: 30, fator: 1 },
+    ];
+    partes.cacaCampos = {};
+    campos.forEach(function (c) {
+      const caixa = el("label", { display: "flex", flexDirection: "column", fontSize: "9.5px", color: "#9fb3c2" });
+      caixa.appendChild(el("span", null, c.rotulo));
+      const campo = el("input", {
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "2px 4px",
+        border: "1px solid #3d5566",
+        borderRadius: "3px",
+        background: "#0d1720",
+        color: "#cfe3f2",
+        font: "10.5px ui-monospace, monospace",
+      });
+      campo.type = "number";
+      campo.min = String(c.min);
+      campo.max = String(c.max);
+      campo.value = String(Math.round((regras[c.chave] || 0) / c.fator));
+      partes.cacaCampos[c.chave] = { campo: campo, fator: c.fator };
+      caixa.appendChild(campo);
+      grade.appendChild(caixa);
+    });
+    secao.appendChild(grade);
+    const statusCaca = el("div", { fontSize: "9.5px", color: "#6f8a9c", marginTop: "3px" },
+      "Chegou no sqm: segura até sobrar o limite de monstros.");
+    secao.appendChild(statusCaca);
+    secao.appendChild(botao("Salvar caça", function () {
+      const novo = {};
+      Object.keys(partes.cacaCampos).forEach(function (chave) {
+        const info = partes.cacaCampos[chave];
+        novo[chave] = Math.round(Number(info.campo.value) || 0) * info.fator;
+      });
+      let aplicado;
+      try {
+        aplicado = window.Olivia && window.Olivia.caca
+          ? window.Olivia.caca.definir(novo)
+          : motor.rota.definirCaca(novo);
+      } catch (e) {
+        aplicado = motor.rota.definirCaca(novo);
+      }
+      statusCaca.textContent = "Caça: livre " + aplicado.raioLimpo + " sqm · mínimo "
+        + Math.round(aplicado.minParadoMs / 1000) + " s · teto "
+        + Math.round(aplicado.tetoMs / 1000) + " s · mana " + aplicado.manaMinPct + "%";
+    }));
+    raiz.appendChild(secao);
+
     const seguir = linha({ marginTop: "6px" });
     partes.idAlvo = el("input", {
-      width: "82px",
+      width: "72px",
       padding: "4px 5px",
       border: "1px solid #3d5566",
       borderRadius: "4px",
@@ -153,13 +277,66 @@ export function criarPainel(opcoes) {
     partes.idAlvo.placeholder = "id do jogador";
     partes.idAlvo.inputMode = "numeric";
     seguir.appendChild(partes.idAlvo);
+
+    partes.distancia = el("input", {
+      width: "34px",
+      padding: "4px 3px",
+      border: "1px solid #3d5566",
+      borderRadius: "4px",
+      background: "#0d1720",
+      color: "#cfe3f2",
+      font: "11px ui-monospace, monospace",
+      textAlign: "center",
+    });
+    partes.distancia.type = "number";
+    partes.distancia.min = "0";
+    partes.distancia.max = "8";
+    partes.distancia.title = "distância em sqm (0 = mesmo tile)";
+    try { partes.distancia.value = localStorage.getItem("ovw.seguirSqm") || "1"; } catch (e) { partes.distancia.value = "1"; }
+    seguir.appendChild(partes.distancia);
+
     seguir.appendChild(botao("Seguir", function () {
       const id = Number(partes.idAlvo.value);
       if (!Number.isInteger(id) || id <= 0) return;
-      motor.seguir(id);
+      const onda = !!(partes.onda && partes.onda.checked);
+      let dist = Number(partes.distancia.value);
+      if (!Number.isFinite(dist)) dist = 1;
+      dist = Math.max(0, Math.min(8, Math.round(dist)));
+      if (!onda) {
+        try { localStorage.setItem("ovw.seguirSqm", String(dist)); } catch (e) { /* sem storage */ }
+      }
+      motor.seguir(id, onda ? 4 : dist, { onda: onda });
       atualizar();
     }));
     raiz.appendChild(seguir);
+
+    const linhaOnda = linha({ marginTop: "2px" });
+    partes.onda = document.createElement("input");
+    partes.onda.type = "checkbox";
+    partes.onda.checked = !!(window.Olivia && window.Olivia.onda && window.Olivia.onda.ligado());
+    partes.onda.addEventListener("change", function () {
+      const ligado = partes.onda.checked;
+      if (window.Olivia && window.Olivia.onda) window.Olivia.onda.definir(ligado);
+      else motor.definirOnda(ligado);
+      if (ligado) {
+        try { localStorage.setItem("ovw.seguirSqm", partes.distancia.value); } catch (e) { /* sem storage */ }
+        partes.distancia.value = "4";
+      } else {
+        let guardado = "1";
+        try { guardado = localStorage.getItem("ovw.seguirSqm") || "1"; } catch (e) { /* sem storage */ }
+        partes.distancia.value = guardado;
+      }
+      partes.distancia.disabled = ligado;
+      atualizar();
+    });
+    linhaOnda.appendChild(partes.onda);
+    linhaOnda.appendChild(el("span", null, "Seguir knight (onda 4 sqm)"));
+    raiz.appendChild(linhaOnda);
+
+    if (partes.onda.checked) {
+      partes.distancia.value = "4";
+      partes.distancia.disabled = true;
+    }
 
     const rodape = linha({ marginTop: "6px", justifyContent: "space-between" });
     partes.log = el("span", { fontSize: "10px", color: "#6f8a9c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, "");
@@ -191,14 +368,20 @@ export function criarPainel(opcoes) {
     const modo = motor.modo();
     const alvo = motor.rota.alvo();
     const indice = Math.min(motor.rota.indice() + 1, motor.rota.total());
+    const ci = motor.rota.cacaInfo ? motor.rota.cacaInfo() : null;
+    const caca = ci && ci.ativo
+      ? " · caça " + Math.floor(ci.tempoMs / 1000) + "s (" + ci.perto + " mobs)"
+      : "";
 
     partes.estado.textContent = modo === "parada" ? "parada" : modo;
     partes.modo.textContent = modo === "rota"
       ? "rota · ponto " + indice + "/" + motor.rota.total()
         + " · volta " + motor.rota.volta()
         + (alvo ? " (" + alvo.x + "," + alvo.y + ")" : "")
+        + caca
       : modo === "seguir"
         ? "seguindo " + (motor.seguindoId() || "?")
+          + (motor.seguidor.onda() ? " · onda" : "")
         : "parada · ponto " + indice + "/" + motor.rota.total();
 
     const pausa = Math.ceil(motor.pausaRestante() / 1000);

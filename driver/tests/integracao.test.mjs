@@ -133,6 +133,23 @@ test("o bundle monta o Olivia e assina o eresBot", () => {
   assert.equal((assinantes.get("eresBot") || []).length, 1, "não assinou eresBot");
 });
 
+test("o bundle expõe seguir knight e vira para o alvo na vaga", () => {
+  const { janela, J, enviados } = cenario();
+  J.miId = 1;
+  J.ents.set("j1", { x: 0, y: 10, piso: 0, mundo: 0 });
+  J.ents.set("j7", { x: 10, y: 10, piso: 0, mundo: 0, nombre: "Knight" });
+
+  janela.Olivia.onda.definir(true);
+  janela.Olivia.seguir(7, 4);
+  janela.Olivia.motor.tick();
+  assert.deepEqual(enviados.at(-1), { t: "ir", x: 6, y: 10 });
+
+  J.ents.get("j1").x = 6;
+  janela.Olivia.motor.tick();
+  assert.deepEqual(enviados.at(-1), { t: "pc", k: "xd", d: { a: 3 } });
+  janela.Olivia.parar();
+});
+
 test("responde «Não» com /ebr e conta na sessão", async () => {
   const { janela, Red, enviados } = cenario();
   Red.emitir("eresBot", { id: "jan-1", seg: 20, b: [{ tx: "Sí", k: "a" }, { tx: "No", k: "b" }] });
@@ -248,6 +265,28 @@ test("rota é salva e retomada após reinjetar o driver", () => {
   assert.equal(segundo.janela.Olivia.modo(), "rota", "não retomou a rota");
   assert.equal(segundo.janela.Olivia.motor.rota.total(), 2);
   assert.equal(segundo.janela.Olivia.motor.rota.repetir(), true);
+});
+
+test("marca de ponto de caça e configuração são salvas e retomadas", () => {
+  const primeiro = cenario();
+  primeiro.janela.Olivia.caca.definir({
+    raioLimpo: 4,
+    minParadoMs: 5000,
+    tetoMs: 120000,
+    manaMinPct: 40,
+    sairComMobs: 1,
+    tremMobs: 5,
+  });
+  primeiro.janela.Olivia.rota([[10, 10, "h"], [11, 10]], { repetir: true });
+  avancar(3000);
+
+  const salvo = JSON.parse(primeiro.janela.localStorage.getItem("ovw.rota.estado"));
+  assert.equal(salvo.pontos[0].hunt, true, "não salvou a marca de caça");
+  assert.equal(primeiro.janela.localStorage.getItem("ovw.caca") != null, true);
+
+  const segundo = cenario({ localStorage: primeiro.janela.localStorage });
+  assert.equal(segundo.janela.Olivia.motor.rota.cacaConfig().tremMobs, 5);
+  assert.equal(segundo.janela.Olivia.motor.rota.pontos()[0].hunt, true);
 });
 
 test("parar de propósito não é retomado ao reinjetar", () => {

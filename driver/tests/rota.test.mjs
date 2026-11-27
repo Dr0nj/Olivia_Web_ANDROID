@@ -213,3 +213,114 @@ test("posicionar retoma a rota de um índice", () => {
   assert.deepEqual(rota.alvo(), { x: 3, y: 3 });
   assert.equal(rota.passo({ pos: { x: 9, y: 9 }, agora: 100 }).x, 3);
 });
+
+function cacaConfig(extra) {
+  return Object.assign({
+    raioLimpo: 2,
+    minParadoMs: 1000,
+    tetoMs: 30000,
+    manaMinPct: 30,
+    sairComMobs: 0,
+    tremMobs: 0,
+  }, extra || {});
+}
+
+test("rota lê o ponto de caça em objeto e em lista compacta", () => {
+  const rota = criarRota();
+  rota.carregar([[1, 1], [2, 1, "h"], { x: 3, y: 1, hunt: true }]);
+  assert.deepEqual(rota.pontos().map((p) => p.hunt), [false, true, true]);
+});
+
+test("só entra no ponto de caça pisando no sqm exato e segura até limpar", () => {
+  const rota = criarRota({ caca: cacaConfig(), aleatorio: () => 0 });
+  rota.carregar([{ x: 10, y: 10, hunt: true }, [12, 10]]);
+  rota.iniciar(0, { x: 9, y: 10 });
+
+  // A chegada por raio não vale para ponto de caça.
+  assert.equal(rota.passo({ pos: { x: 9, y: 10 }, agora: 0 }).acao, "ir");
+  assert.equal(rota.passo({ pos: { x: 9, y: 10 }, agora: 700 }).acao, "ir");
+
+  const entrou = rota.passo({ pos: { x: 10, y: 10 }, agora: 800, mobs: [], manaPct: 100 });
+  assert.equal(entrou.acao, "cacar");
+  assert.equal(entrou.emPonto, true);
+  assert.equal(rota.situacao(), "cacando");
+
+  // O primeiro tick ainda vê a mudança de sqm como "andando".
+  assert.equal(rota.passo({ pos: { x: 10, y: 10 }, agora: 900, mobs: [], manaPct: 100 }).acao, "cacar");
+  assert.equal(rota.passo({ pos: { x: 10, y: 10 }, agora: 1400, mobs: [], manaPct: 100 }).acao, "cacar");
+  // 1,5 s depois de parado (1400) e já passou do mínimo (1 s): sai e avança.
+  const saiu = rota.passo({ pos: { x: 10, y: 10 }, agora: 2900, mobs: [], manaPct: 100 });
+  assert.equal(saiu.acao, "avancar");
+  assert.equal(saiu.fimCaca, true);
+  assert.equal(rota.indice(), 1);
+  assert.equal(rota.situacao(), "andando");
+});
+
+test("ponto de caça com monstro espera o teto de segurança", () => {
+  const rota = criarRota({
+    caca: cacaConfig({ minParadoMs: 0, tetoMs: 10000 }),
+    aleatorio: () => 0,
+  });
+  rota.carregar([{ x: 10, y: 10, hunt: true }]);
+  rota.iniciar(0, { x: 10, y: 10 });
+  rota.passo({ pos: { x: 10, y: 10 }, agora: 0, mobs: [{ x: 10, y: 10 }], manaPct: 100 });
+  const teto = rota.passo({ pos: { x: 10, y: 10 }, agora: 10000, mobs: [{ x: 10, y: 10 }], manaPct: 100 });
+  assert.equal(teto.acao, "concluir");
+  assert.equal(teto.fimCaca, true);
+  assert.match(teto.cacaMotivo, /teto/);
+});
+
+test("preso com trem entra em caça no lugar sem pular o waypoint", () => {
+  const rota = criarRota({
+    caca: cacaConfig({ tremMobs: 3 }),
+    aleatorio: () => 0,
+    timeoutMs: 60000,
+    timeoutMaxMs: 60000,
+  });
+  rota.carregar([[20, 0]]);
+  rota.iniciar(0, { x: 0, y: 0 });
+
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 0 }).acao, "ir");
+  const preso = rota.passo({
+    pos: { x: 0, y: 0 },
+    agora: 1600,
+    mobs: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }],
+    manaPct: 100,
+  });
+  assert.equal(preso.acao, "cacar");
+  assert.equal(preso.emPonto, false);
+  assert.equal(rota.indice(), 0, "não pode pular o waypoint");
+
+  rota.passo({ pos: { x: 0, y: 0 }, agora: 1700, mobs: [], manaPct: 100 });
+  const soltou = rota.passo({ pos: { x: 0, y: 0 }, agora: 3200, mobs: [], manaPct: 100 });
+  assert.equal(soltou.acao, "caca_fim");
+  // Continua indo para o MESMO waypoint.
+  assert.equal(rota.passo({ pos: { x: 0, y: 0 }, agora: 3300, mobs: [], manaPct: 100 }).x, 20);
+});
+
+test("trecho saindo de ponto de caça espera caminho em vez de pular", () => {
+  const rota = criarRota({
+    caca: cacaConfig({ minParadoMs: 0 }),
+    aleatorio: () => 0,
+    pularApos: 2,
+    timeoutMs: 1000,
+    timeoutMaxMs: 1000,
+  });
+  rota.carregar([{ x: 10, y: 10, hunt: true }, [20, 10]]);
+  rota.iniciar(0, { x: 10, y: 10 });
+
+  // Limpa e sai do ponto de caça já mirando o próximo.
+  rota.passo({ pos: { x: 10, y: 10 }, agora: 0, mobs: [], manaPct: 100 });
+  rota.passo({ pos: { x: 10, y: 10 }, agora: 100, mobs: [], manaPct: 100 });
+  const saiu = rota.passo({ pos: { x: 10, y: 10 }, agora: 1600, mobs: [], manaPct: 100 });
+  assert.equal(saiu.acao, "avancar");
+  assert.equal(rota.indice(), 1);
+
+  // Sem progresso: repete uma vez e depois espera (caça no lugar), sem pular.
+  assert.equal(rota.passo({ pos: { x: 10, y: 10 }, agora: 1700, mobs: [], manaPct: 100 }).acao, "ir");
+  assert.equal(rota.passo({ pos: { x: 10, y: 10 }, agora: 2800, mobs: [], manaPct: 100 }).acao, "repetir");
+  const espera = rota.passo({ pos: { x: 10, y: 10 }, agora: 3900, mobs: [], manaPct: 100 });
+  assert.equal(espera.acao, "cacar");
+  assert.equal(espera.emPonto, false);
+  assert.equal(rota.indice(), 1);
+});

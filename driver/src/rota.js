@@ -6,7 +6,14 @@
 //  - chegada com raio (não precisa pisar exatamente no tile);
 //  - depois de N tentativas sem progresso, pula o ponto e tenta o próximo alcançável;
 //  - se todos os pontos falharem, espera 5 s e recomeça a volta (até 12 vezes);
-//  - a volta concluída limpa os pontos pulados.
+//  - a volta concluída limpa os pontos pulados;
+//  - ponto de caça: pisa EXATAMENTE no sqm marcado, para e segura até limpar (caca.js).
+import { criarCaca, contarMobs, TREM_RAIO, TREM_PRESO_MS, MAX_ESPERAS } from "./caca.js";
+
+// Janela em que uma mudança de posição ainda conta como "andando" (o estado do
+// cliente chega a cada ~250 ms; 500 ms evita piscar parado entre dois passos).
+const MOVENDO_JANELA_MS = 500;
+
 export function criarRota(opcoes) {
   const cfg = Object.assign({
     timeoutMs: 2500,
@@ -28,11 +35,14 @@ export function criarRota(opcoes) {
     aleatorio: Math.random,
     esperaMs: 5000,
     esperasMax: 12,
+    // Configuração do ponto de caça (HuntSpotSettings do desktop).
+    caca: null,
   }, opcoes || {});
 
+  const caca = criarCaca({ aleatorio: cfg.aleatorio, config: cfg.caca });
   let pontos = [];
   let indice = 0;
-  let situacao = "parada"; // parada | andando | pausada | esperando | concluida | desistiu
+  let situacao = "parada"; // parada | andando | pausada | esperando | cacando | concluida | desistiu
   let tentativas = 0;
   let desde = 0;
   let pausaAte = 0;
@@ -44,6 +54,139 @@ export function criarRota(opcoes) {
   let ultimaPos = null;
   let paradoDesde = 0;
   let atraso = { modo: "off", ms: 0, minMs: 0, maxMs: 0 };
+
+  // ---- Ponto de caça (mesmas regras do LongRouteSession/HuntSpotSettings) ----
+  let cacaEsperas = 0;
+  // Trecho saindo de um ponto de caça: caminho travado espera em vez de pular.
+  let pernaCaca = false;
+  let posMovel = null;
+  let mudouEm = 0;
+
+  function limparCaca() {
+    caca.reset();
+    cacaEsperas = 0;
+    pernaCaca = false;
+    posMovel = null;
+    mudouEm = -Infinity;
+  }
+
+  function atualizarMovimento(agora, pos) {
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+    if (!posMovel) {
+      posMovel = { x: pos.x, y: pos.y };
+      // Primeira posição conhecida: não inventa que está andando. Se o personagem
+      // estiver em movimento, o próximo sqm atualiza o relógio normalmente.
+      if (!Number.isFinite(mudouEm)) mudouEm = agora - MOVENDO_JANELA_MS;
+      return;
+    }
+    if (posMovel.x !== pos.x || posMovel.y !== pos.y) {
+      posMovel = { x: pos.x, y: pos.y };
+      mudouEm = agora;
+    }
+  }
+
+  function movendo(agora) {
+    return posMovel !== null && agora - mudouEm < MOVENDO_JANELA_MS;
+  }
+
+  function pontoDeCaca(alvo) {
+    return !!(alvo && alvo.hunt);
+  }
+
+  function cacaRelacionada(alvo) {
+    return (pernaCaca || pontoDeCaca(alvo)) && cacaEsperas < MAX_ESPERAS;
+  }
+
+  function iniciarCaca(agora, noPonto, motivo) {
+    if (noPonto) {
+      cacaEsperas = 0;
+      pernaCaca = false;
+    } else {
+      cacaEsperas += 1;
+    }
+    const info = caca.iniciar(agora, { noPonto: noPonto, motivo: motivo });
+    situacao = "cacando";
+    pausaAte = 0;
+    limite = null;
+    ultimaPos = null;
+    return {
+      acao: "cacar",
+      emPonto: !!noPonto,
+      motivo: motivo,
+      perto: info.perto,
+      tempoMs: 0,
+      esperas: cacaEsperas,
+    };
+  }
+
+  function fimCaca(agora, r) {
+    const noPonto = r.noPonto;
+    situacao = "andando";
+    limite = null;
+    ultimaPos = null;
+    // Recomeça o relógio de "preso" só depois de sair da caça.
+    posMovel = null;
+    mudouEm = agora;
+    if (!noPonto) {
+      desde = agora;
+      return {
+        acao: "caca_fim",
+        fimCaca: true,
+        cacaMotivo: r.motivo,
+        emPonto: false,
+        tempoMs: r.tempoMs,
+        perto: r.perto,
+      };
+    }
+    pernaCaca = true;
+    cacaEsperas = 0;
+    indice += 1;
+    tentativas = 0;
+    desde = agora;
+    if (indice >= pontos.length) {
+      const fecho = fecharVolta(agora);
+      return Object.assign({}, fecho, {
+        fimCaca: true,
+        cacaMotivo: r.motivo,
+        emPonto: true,
+        tempoMs: r.tempoMs,
+      });
+    }
+    return {
+      acao: "avancar",
+      fimCaca: true,
+      cacaMotivo: r.motivo,
+      emPonto: true,
+      tempoMs: r.tempoMs,
+      indice: indice,
+      alvo: pontos[indice],
+      pos: null,
+    };
+  }
+
+  function processarCaca(entrada) {
+    const agora = entrada.agora;
+    const r = caca.passo({
+      agora: agora,
+      pos: entrada.pos,
+      mobs: entrada.mobs,
+      manaPct: entrada.manaPct,
+      movendo: movendo(agora),
+    });
+    if (r.ativo) {
+      return {
+        acao: "cacar",
+        emPonto: r.noPonto,
+        motivo: r.motivo,
+        perto: r.perto,
+        tempoMs: r.tempoMs,
+        limpo: r.limpo,
+        esperando: r.esperando,
+        esperas: cacaEsperas,
+      };
+    }
+    return fimCaca(agora, r);
+  }
 
   function definirAtraso(c) {
     if (!c || c.modo === "off" || c.ligado === false) {
@@ -89,7 +232,11 @@ export function criarRota(opcoes) {
       const pausa = !Array.isArray(p) && Number.isFinite(p && p.pausaMs)
         ? Math.max(0, p.pausaMs)
         : cfg.pausaPadraoMs;
-      return { x: x, y: y, pausaMs: pausa };
+      // Marca de caça: {x,y,hunt:true}, {x,y,caca:true}, [x,y,"h"] ou [x,y,true].
+      const hunt = Array.isArray(p)
+        ? p[2] === "h" || p[2] === true || p[3] === "h"
+        : !!(p && (p.hunt === true || p.hunt === "h" || p.caca === true || p.caca === "h" || p.h === "h" || p.h === true));
+      return { x: x, y: y, pausaMs: pausa, hunt: hunt };
     });
   }
 
@@ -102,6 +249,7 @@ export function criarRota(opcoes) {
     volta = 0;
     pulados = new Set();
     esperas = 0;
+    limparCaca();
     return pontos.length;
   }
 
@@ -135,6 +283,7 @@ export function criarRota(opcoes) {
     pulados = new Set();
     esperas = 0;
     ultimaPos = null;
+    limparCaca();
     situacao = "andando";
     return true;
   }
@@ -155,6 +304,7 @@ export function criarRota(opcoes) {
     situacao = "parada";
     pausaAte = 0;
     finalizando = false;
+    limparCaca();
   }
 
   function posicionar(i) {
@@ -165,6 +315,7 @@ export function criarRota(opcoes) {
     limite = null;
     pulados = new Set();
     ultimaPos = null;
+    limparCaca();
     return true;
   }
 
@@ -248,10 +399,24 @@ export function criarRota(opcoes) {
     return situacao === "esperando" ? Math.max(0, pausaAte - agora) : 0;
   }
 
-  // Decisão do tick: ir | repetir | pular | sem_caminho | esperar | avancar | volta | concluir | desistir
+  function definirCaca(config) {
+    return caca.configurar(config);
+  }
+
+  function cacaInfo(agora) {
+    const quando = Number.isFinite(agora) ? agora : 0;
+    return Object.assign({}, caca.info(quando), {
+      situacao: situacao,
+      esperas: cacaEsperas,
+      pernaCaca: pernaCaca,
+    });
+  }
+
+  // Decisão do tick: ir | repetir | pular | sem_caminho | esperar | avancar | volta | concluir | desistir | cacar | caca_fim
   function passo(entrada) {
     const agora = entrada.agora;
     const pos = entrada.pos;
+    const mobs = Array.isArray(entrada.mobs) ? entrada.mobs : [];
 
     if (situacao === "esperando") {
       if (agora < pausaAte) return { acao: "esperar", motivo: "sem-caminho" };
@@ -262,8 +427,15 @@ export function criarRota(opcoes) {
       return { acao: "esperar", motivo: "recomeco" };
     }
 
+    if (situacao === "cacando") {
+      if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
+      atualizarMovimento(agora, pos);
+      return processarCaca(entrada);
+    }
+
     if (situacao !== "andando") return null;
     if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
+    atualizarMovimento(agora, pos);
     if (pausaAte !== 0) {
       if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
       // Pausa terminou: o prazo da próxima perna começa agora.
@@ -290,9 +462,16 @@ export function criarRota(opcoes) {
     const parado = !mudou && agora - paradoDesde >= cfg.settleMs;
 
     const exato = pos.x === alvo.x && pos.y === alvo.y;
-    const perto = !exato && cheb(pos, alvo) <= cfg.raioChegada && parado;
+    // Ponto de caça só "chega" pisando no sqm exato (como o desktop): aceitar o
+    // raio deixava o personagem parado dois sqm antes e caçando longe do ponto.
+    const perto = !exato && !pontoDeCaca(alvo) && cheb(pos, alvo) <= cfg.raioChegada && parado;
 
     if (exato || perto) {
+      if (exato && pontoDeCaca(alvo)) {
+        return iniciarCaca(agora, true, "chegou no ponto de caça " + alvo.x + "," + alvo.y);
+      }
+      pernaCaca = false;
+      cacaEsperas = 0;
       indice += 1;
       tentativas = 0;
       desde = agora;
@@ -312,12 +491,30 @@ export function criarRota(opcoes) {
       return { acao: "avancar", indice: indice, alvo: pontos[indice], perto: perto, pos: pos };
     }
 
+    // Trem preso (26/11): andando com N+ monstros a até 4 sqm e sem mudar de sqm
+    // por 1,5 s, caça no lugar em vez de esperar o caminho abrir.
+    const regras = caca.config();
+    if (regras.tremMobs > 0 && cacaEsperas < MAX_ESPERAS
+        && agora - mudouEm >= TREM_PRESO_MS
+        && contarMobs(pos, mobs, TREM_RAIO) >= regras.tremMobs) {
+      const quantos = contarMobs(pos, mobs, TREM_RAIO);
+      return iniciarCaca(agora, false,
+        "preso com " + quantos + " monstros em " + pos.x + "," + pos.y + "; caçando no lugar");
+    }
+
     if (agora - desde > limite) {
       tentativas += 1;
       if (tentativas < cfg.pularApos) {
         desde = agora;
         limite = prazoDe(pos, alvo);
         return { acao: "repetir", x: alvo.x, y: alvo.y, indice: indice, tentativa: tentativas };
+      }
+      // Trecho de caça travado: espera o caminho abrir no lugar em vez de pular
+      // (o pulo de waypoint levava a beco no desktop). Depois de MAX_ESPERAS, normal.
+      if (cacaRelacionada(alvo)) {
+        return iniciarCaca(agora, false, pontoDeCaca(alvo)
+          ? "caminho travado no ponto de caça " + alvo.x + "," + alvo.y + "; esperando abrir"
+          : "caminho travado no trecho de caça; esperando abrir");
       }
       return pularAtual(agora);
     }
@@ -336,9 +533,12 @@ export function criarRota(opcoes) {
     pularAtual,
     definirAtraso,
     atrasoConfig: () => Object.assign({}, atraso),
+    definirCaca,
+    cacaConfig: () => caca.config(),
+    cacaInfo,
     repetir,
     definirVolta,
-    pontos: () => pontos.map((p) => ({ x: p.x, y: p.y, pausaMs: p.pausaMs })),
+    pontos: () => pontos.map((p) => ({ x: p.x, y: p.y, pausaMs: p.pausaMs, hunt: !!p.hunt })),
     total: () => pontos.length,
     indice: () => indice,
     situacao: () => situacao,

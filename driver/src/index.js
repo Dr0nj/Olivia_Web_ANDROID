@@ -6,6 +6,7 @@ import { criarMotor } from "./motor.js";
 import { criarAntiBot } from "./antibot.js";
 import { criarPainel } from "./painel.js";
 import { criarArea } from "./area.js";
+import { CACA_PADRAO } from "./caca.js";
 
 (function () {
   "use strict";
@@ -17,6 +18,7 @@ import { criarArea } from "./area.js";
 
   const CHAVE_ROTA = "ovw.rota.estado";
   const CHAVE_SESSAO = "ovw.sessao";
+  const CHAVE_CACA = "ovw.caca";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -55,6 +57,10 @@ import { criarArea } from "./area.js";
 
   const motor = criarMotor({ ponte: ponte, log: registro });
 
+  // Configuração do ponto de caça (mesmos nomes do HuntSpotSettings do desktop).
+  const cacaSalvo = ler(CHAVE_CACA);
+  if (cacaSalvo) motor.rota.definirCaca(cacaSalvo);
+
   let autoTarefas = (function () {
     try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
   })();
@@ -78,6 +84,12 @@ import { criarArea } from "./area.js";
   const area = criarArea();
   let areaAlvo = null;
   let areaMobs = 0;
+
+  // Seguir knight: fica na vaga da onda a 4 sqm e vira para o alvo.
+  let ondaLigada = (function () {
+    try { return localStorage.getItem("ovw.seguirOnda") === "1"; } catch (e) { return false; }
+  })();
+  motor.seguidor.definirOnda(ondaLigada);
 
   // Mantém a conexão viva quando o WS cai no meio do jogo (mesma ideia do AutoReconnect).
   function vigiarConexao() {
@@ -127,7 +139,15 @@ import { criarArea } from "./area.js";
   // ---- persistência: rota, sessão e retomada automática -------------------
 
   function guardarRota() {
-    const pontos = motor.rota.pontos().map(function (p) { return [p.x, p.y, p.pausaMs]; });
+    const pontos = motor.rota.pontos().map(function (p) {
+      if (p.hunt || p.pausaMs > 0) {
+        const o = { x: p.x, y: p.y };
+        if (p.pausaMs > 0) o.pausaMs = p.pausaMs;
+        if (p.hunt) o.hunt = true;
+        return o;
+      }
+      return [p.x, p.y];
+    });
     const st = ponte.estado();
     gravar(CHAVE_ROTA, {
       pontos: pontos,
@@ -141,10 +161,7 @@ import { criarArea } from "./area.js";
       ativa: rotaAtiva && pontos.length > 0,
     });
     try {
-      const texto = pontos.map(function (p) {
-        return p[2] > 0 ? JSON.stringify({ x: p[0], y: p[1], pausaMs: p[2] }) : "[" + p[0] + "," + p[1] + "]";
-      });
-      localStorage.setItem("ovw.rota", "[" + texto.join(",") + "]");
+      localStorage.setItem("ovw.rota", JSON.stringify(pontos));
     } catch (e) { /* sem storage */ }
   }
 
@@ -222,7 +239,9 @@ import { criarArea } from "./area.js";
         situacao: motor.rota.situacao(),
         volta: motor.rota.volta(),
         repetir: motor.rota.repetir(),
+        caca: motor.cacaInfo(),
       },
+      caca: motor.rota.cacaConfig(),
       pausa: motor.pausaRestante(),
       sessao: motor.sessao.snapshot(),
       jogo: st,
@@ -231,6 +250,11 @@ import { criarArea } from "./area.js";
       pausaHumana: { ligado: motor.humano.ligado() },
       reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
       area: { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs },
+      onda: {
+        ligado: ondaLigada,
+        lado: motor.seguidor.lado(),
+        distancia: motor.seguidor.distanciaOnda(),
+      },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -408,7 +432,39 @@ import { criarArea } from "./area.js";
       const o = opcoes || {};
       return motor.iniciarRota(pontos, o.origem || "console", o);
     },
-    seguir: function (id, distancia) { return motor.seguir(id, distancia); },
+    caca: {
+      config: function () { return motor.rota.cacaConfig(); },
+      definir: function (config) {
+        const aplicado = motor.rota.definirCaca(config);
+        gravar(CHAVE_CACA, aplicado);
+        registro.evento("caca_config", aplicado);
+        publicar();
+        return aplicado;
+      },
+      padrao: function () { return Object.assign({}, CACA_PADRAO); },
+    },
+    seguir: function (id, distancia, opcoes) {
+      const o = Object.assign({}, opcoes || {});
+      if (o.onda === undefined) o.onda = ondaLigada;
+      return motor.seguir(id, distancia, o);
+    },
+    onda: {
+      ligado: function () { return ondaLigada; },
+      definir: function (v) {
+        ondaLigada = !!v;
+        try { localStorage.setItem("ovw.seguirOnda", ondaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
+        motor.definirOnda(ondaLigada);
+        publicar();
+        return ondaLigada;
+      },
+      estado: function () {
+        return {
+          ligado: ondaLigada,
+          lado: motor.seguidor.lado(),
+          distancia: motor.seguidor.distanciaOnda(),
+        };
+      },
+    },
     jogadores: function () { return ponte.jogadores(); },
     autoTarefas: {
       ligado: function () { return autoTarefas; },

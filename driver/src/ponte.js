@@ -74,7 +74,14 @@ export function criarPonteNavegador() {
   function entidade(id) {
     const e = entidadeDe("j" + id) || entidadeDe("m" + id);
     if (!e || !Number.isFinite(e.x) || !Number.isFinite(e.y)) return null;
-    return { x: e.x, y: e.y, nome: e.nombre || e.nome || null };
+    return {
+      x: e.x,
+      y: e.y,
+      nome: e.nombre || e.nome || null,
+      piso: Number.isFinite(e.piso) ? e.piso : null,
+      mundo: Number.isFinite(e.mundo) ? e.mundo : null,
+      morto: !!e.muerto,
+    };
   }
 
   // Jogadores visíveis (entidades "j..."), do mais perto para o mais longe.
@@ -148,6 +155,14 @@ export function criarPonteNavegador() {
       // sem Pelea: manda a mesma mensagem
     }
     return enviar({ t: "objetivo", monstruo: id });
+  }
+
+  // Gira sem andar. Formato da tecla Ctrl+seta do cliente:
+  // a = 0 baixo, 1 cima, 2 esquerda, 3 direita.
+  function girar(face) {
+    const a = Number(face);
+    if (!Number.isInteger(a) || a < 0 || a > 3) return false;
+    return enviar({ t: "pc", k: "xd", d: { a: a } });
   }
 
   function aoReceber(tipo, fn) {
@@ -226,6 +241,6 @@ export function criarPonteNavegador() {
 
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, caminavel, monstros, objetivo, mirar,
+    inventario, suprimentos, caminavel, monstros, objetivo, mirar, girar,
   };
 }

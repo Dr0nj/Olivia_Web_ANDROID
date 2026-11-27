@@ -35,10 +35,13 @@ import java.util.Locale;
 class Painel {
     interface Acoes {
         void iniciarRota(String json, boolean repetir, String atrasoJson);
+        void definirCaca(String json);
         void definirRepetir(boolean repetir);
         void parar();
         void seguir(long id);
         void seguir(long id, int distancia);
+        void seguir(long id, int distancia, boolean onda);
+        void ligarOnda(boolean ligado);
         void ligarAntiBot(boolean ligado);
         void ligarAutoTarefas(boolean ligado);
         void ligarPausaHumana(boolean ligado);
@@ -84,6 +87,7 @@ class Painel {
     private ScrollView rolagemCorpo;
     private LinearLayout listaSeguir;
     private EditText distanciaSeguir;
+    private CheckBox onda;
     private TextView alvoSeguir;
     private long idSeguir = 0;
     private CheckBox reconexao;
@@ -252,6 +256,29 @@ class Painel {
         linhaDist.addView(texto("sqm (0 = mesmo tile)", 9.5f, Color.rgb(159, 179, 194), false));
         tela.addView(linhaDist);
 
+        onda = new CheckBox(ctx);
+        estilizarCaixa(onda);
+        onda.setText("Seguir knight (onda 4 sqm)");
+        onda.setTextSize(9.5f);
+        onda.setTextColor(Color.rgb(223, 231, 238));
+        onda.setChecked(prefs.getBoolean("seguirOnda", false));
+        onda.setPadding(0, d(4), 0, 0);
+        onda.setOnCheckedChangeListener((b, marcado) -> {
+            prefs.edit().putBoolean("seguirOnda", marcado).apply();
+            distanciaSeguir.setEnabled(!marcado);
+            if (marcado) distanciaSeguir.setText("4");
+            acoes.ligarOnda(marcado);
+            nota(marcado ? "seguir knight ligado (vaga da onda)" : "seguir knight desligado");
+        });
+        tela.addView(onda);
+        tela.addView(texto("Fica 4 sqm atrás do alvo, com ele no centro do 3x3 da onda.\n"
+                + "Escolhe o lado que mais acerta monstros e vira para o alvo.",
+                8.5f, Color.rgb(111, 138, 156), false));
+        if (onda.isChecked()) {
+            distanciaSeguir.setText("4");
+            distanciaSeguir.setEnabled(false);
+        }
+
         LinearLayout acoesSeguir = linha();
         acoesSeguir.setPadding(0, d(4), 0, 0);
         acoesSeguir.addView(botao("Atualizar", v -> carregarJogadores()));
@@ -324,11 +351,12 @@ class Painel {
         } catch (Exception e) {
             sqm = 2;
         }
-        sqm = Math.max(0, Math.min(8, sqm));
+        boolean knight = onda != null && onda.isChecked();
+        sqm = knight ? 4 : Math.max(0, Math.min(8, sqm));
         prefs.edit().putInt("seguirSqm", sqm).apply();
-        acoes.seguir(idSeguir, sqm);
+        acoes.seguir(idSeguir, sqm, knight);
         voltarHub();
-        nota("seguindo " + idSeguir + " · " + sqm + " sqm");
+        nota("seguindo " + idSeguir + " · " + sqm + " sqm" + (knight ? " (onda)" : ""));
     }
 
     private LinearLayout montarTelaConfig() {
@@ -535,9 +563,15 @@ class Painel {
 
         LinearLayout primeira = linha();
         primeira.setPadding(0, d(4), 0, 0);
-        primeira.addView(botao("Marcar aqui", v -> marcarPontoAtual()));
-        primeira.addView(botao("Desfazer", v -> desfazerPonto()));
+        primeira.addView(botao("Marcar aqui", v -> marcarPontoAtual(false)));
+        primeira.addView(botao("Ponto de caça", v -> marcarPontoAtual(true)));
         tela.addView(primeira);
+
+        LinearLayout segunda = linha();
+        segunda.setPadding(0, d(3), 0, 0);
+        segunda.addView(botao("Desfazer", v -> desfazerPonto()));
+        segunda.addView(botao("Caça…", v -> dialogoCaca()));
+        tela.addView(segunda);
 
         campoRota = new EditText(ctx);
         campoRota.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -574,7 +608,8 @@ class Painel {
         tela.addView(linhaAtraso);
         atualizarResumoAtraso();
 
-        TextView dica = texto("Ande e toque em Marcar aqui; o último ponto deve ficar perto do primeiro.",
+        TextView dica = texto("Ande e marque os pontos. \"Ponto de caça\" para no sqm, segura até\n"
+                + "limpar e só sai com caminho livre; o último ponto deve ficar perto do primeiro.",
                 8.4f, Color.rgb(111, 138, 156), false);
         dica.setPadding(0, d(3), 0, 0);
         tela.addView(dica);
@@ -616,13 +651,19 @@ class Painel {
 
     private void atualizarTextoRota() {
         if (textoRota == null || campoRota == null) return;
-        int n;
+        int n = 0;
+        int cacas = 0;
         try {
-            n = new JSONArray(campoRota.getText().toString().trim()).length();
+            JSONArray lista = new JSONArray(campoRota.getText().toString().trim());
+            n = lista.length();
+            for (int i = 0; i < n; i++) {
+                if (pontoDeCaca(lista.optJSONArray(i))) cacas += 1;
+            }
         } catch (Exception e) {
             n = 0;
         }
         textoRota.setText(n + (n == 1 ? " ponto" : " pontos")
+                + (cacas > 0 ? " · " + cacas + " de caça" : "")
                 + (n == 0 ? " · ande e marque" : " · toque em Iniciar"));
     }
 
@@ -757,7 +798,132 @@ class Painel {
         return o.toString();
     }
 
-    private void marcarPontoAtual() {
+    boolean ondaAtiva() {
+        return prefs.getBoolean("seguirOnda", false);
+    }
+
+    /** Configuração do ponto de caça, no mesmo formato do driver (caca.js). */
+    String cacaJson() {        JSONObject o = new JSONObject();
+        try {
+            o.put("raioLimpo", prefs.getInt("cacaRaio", 3));
+            o.put("minParadoMs", prefs.getInt("cacaMinMs", 3000));
+            o.put("tetoMs", prefs.getInt("cacaTetoMs", 180000));
+            o.put("manaMinPct", prefs.getInt("cacaMana", 30));
+            o.put("sairComMobs", prefs.getInt("cacaSairMobs", 0));
+            o.put("tremMobs", prefs.getInt("cacaTremMobs", 0));
+        } catch (Exception ignorado) {
+        }
+        return o.toString();
+    }
+
+    private EditText campoCaca(int valor) {
+        EditText e = new EditText(ctx);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER);
+        e.setSingleLine(true);
+        e.setTextSize(12f);
+        e.setText(String.valueOf(valor));
+        e.setLayoutParams(new LinearLayout.LayoutParams(d(64), ViewGroup.LayoutParams.WRAP_CONTENT));
+        return e;
+    }
+
+    private int lerCaca(EditText campo, int padrao, int min, int max) {
+        try {
+            int v = Integer.parseInt(campo.getText().toString().trim());
+            return Math.max(min, Math.min(max, v));
+        } catch (Exception e) {
+            return padrao;
+        }
+    }
+
+    private LinearLayout linhaCaca(String rotulo, EditText campo) {
+        LinearLayout l = linha();
+        TextView t = texto(rotulo, 9.5f, Color.rgb(159, 179, 194), false);
+        t.setMinWidth(d(132));
+        l.addView(t);
+        l.addView(campo);
+        return l;
+    }
+
+    private void dialogoCaca() {
+        final EditText raio = campoCaca(prefs.getInt("cacaRaio", 3));
+        final EditText minimo = campoCaca(prefs.getInt("cacaMinMs", 3000) / 1000);
+        final EditText teto = campoCaca(prefs.getInt("cacaTetoMs", 180000) / 1000);
+        final EditText mana = campoCaca(prefs.getInt("cacaMana", 30));
+        final EditText sair = campoCaca(prefs.getInt("cacaSairMobs", 0));
+        final EditText trem = campoCaca(prefs.getInt("cacaTremMobs", 0));
+
+        LinearLayout caixa = new LinearLayout(ctx);
+        caixa.setOrientation(LinearLayout.VERTICAL);
+        int pad = d(16);
+        caixa.setPadding(pad, d(2), pad, 0);
+        caixa.addView(linhaCaca("Livre a até (sqm)", raio));
+        caixa.addView(linhaCaca("Mínimo parado (s)", minimo));
+        caixa.addView(linhaCaca("Teto de segurança (s)", teto));
+        caixa.addView(linhaCaca("Mana para sair (%)", mana));
+        caixa.addView(linhaCaca("Sair com até (mobs)", sair));
+        caixa.addView(linhaCaca("Trem: N+ monstros", trem));
+        TextView dica = texto("Livre = nenhum monstro a até N sqm. Sai quando sobrarem até\n"
+                + "\"sair com\" monstros no raio (0 = só sem nenhum). Trem 0 desliga:\n"
+                + "andando com N+ monstros a até 4 sqm e preso 1,5 s, caça no lugar.",
+                8.5f, Color.rgb(111, 138, 156), false);
+        dica.setPadding(0, d(5), 0, 0);
+        caixa.addView(dica);
+
+        ScrollView rolagem = new ScrollView(ctx);
+        rolagem.addView(caixa);
+
+        new AlertDialog.Builder(ctx)
+                .setTitle("Ponto de caça")
+                .setView(rolagem)
+                .setPositiveButton("Salvar", (d, w) -> {
+                    int r = lerCaca(raio, 3, 1, 7);
+                    int mn = lerCaca(minimo, 3, 0, 60) * 1000;
+                    int mx = lerCaca(teto, 180, 10, 900) * 1000;
+                    if (mn > mx) mn = mx;
+                    prefs.edit()
+                            .putInt("cacaRaio", r)
+                            .putInt("cacaMinMs", mn)
+                            .putInt("cacaTetoMs", mx)
+                            .putInt("cacaMana", lerCaca(mana, 30, 0, 100))
+                            .putInt("cacaSairMobs", lerCaca(sair, 0, 0, 10))
+                            .putInt("cacaTremMobs", lerCaca(trem, 0, 0, 30))
+                            .apply();
+                    acoes.definirCaca(cacaJson());
+                    atualizarTextoRota();
+                    nota("caça: livre " + r + " sqm · " + (mn / 1000) + "–" + (mx / 1000) + " s");
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private int[] coordenadas(JSONArray ponto) {
+        if (ponto == null) return null;
+        JSONObject objeto = ponto.optJSONObject(0);
+        try {
+            if (objeto != null) {
+                return new int[]{objeto.optInt("x", -1), objeto.optInt("y", -1)};
+            }
+            if (ponto.length() >= 2) {
+                return new int[]{ponto.getInt(0), ponto.getInt(1)};
+            }
+        } catch (Exception ignorado) {
+        }
+        return null;
+    }
+
+    private boolean pontoDeCaca(JSONArray ponto) {
+        if (ponto == null) return false;
+        JSONObject objeto = ponto.optJSONObject(0);
+        if (objeto != null) {
+            return objeto.optBoolean("hunt", false)
+                    || objeto.optBoolean("caca", false)
+                    || "h".equals(objeto.optString("h", ""));
+        }
+        return ponto.length() >= 3
+                && ("h".equals(ponto.optString(2, "")) || ponto.optBoolean(2, false));
+    }
+
+    private void marcarPontoAtual(boolean caca) {
         acoes.posicaoAtual(texto -> {
             JSONArray lista;
             try {
@@ -767,20 +933,50 @@ class Painel {
             }
             try {
                 JSONArray ponto = new JSONArray(texto);
+                int x = ponto.getInt(0);
+                int y = ponto.getInt(1);
                 if (lista.length() > 0) {
                     JSONArray ultimo = lista.optJSONArray(lista.length() - 1);
-                    if (ultimo != null
-                            && ultimo.optInt(0) == ponto.getInt(0)
-                            && ultimo.optInt(1) == ponto.getInt(1)) {
-                        nota("mesmo ponto do anterior");
+                    int[] xy = coordenadas(ultimo);
+                    if (xy != null && xy[0] == x && xy[1] == y) {
+                        if (caca && !pontoDeCaca(ultimo)) {
+                            JSONObject marcado = new JSONObject();
+                            marcado.put("x", x);
+                            marcado.put("y", y);
+                            marcado.put("hunt", true);
+                            lista.put(lista.length() - 1, marcado);
+                            campoRota.setText(lista.toString());
+                            campoRota.setSelection(campoRota.getText().length());
+                            atualizarTextoRota();
+                            nota("ponto " + x + "," + y + " agora é de caça");
+                        } else if (!caca && pontoDeCaca(ultimo)) {
+                            JSONArray normal = new JSONArray();
+                            normal.put(x);
+                            normal.put(y);
+                            lista.put(lista.length() - 1, normal);
+                            campoRota.setText(lista.toString());
+                            campoRota.setSelection(campoRota.getText().length());
+                            atualizarTextoRota();
+                            nota("ponto " + x + "," + y + " voltou a ser normal");
+                        } else {
+                            nota("mesmo ponto do anterior");
+                        }
                         return;
                     }
                 }
-                lista.put(ponto);
+                if (caca) {
+                    JSONObject marcado = new JSONObject();
+                    marcado.put("x", x);
+                    marcado.put("y", y);
+                    marcado.put("hunt", true);
+                    lista.put(marcado);
+                } else {
+                    lista.put(ponto);
+                }
                 campoRota.setText(lista.toString());
                 campoRota.setSelection(campoRota.getText().length());
                 atualizarTextoRota();
-                nota("ponto " + ponto.getInt(0) + "," + ponto.getInt(1) + " marcado");
+                nota((caca ? "ponto de caça " : "ponto ") + x + "," + y + " marcado");
             } catch (Exception e) {
                 nota("posição indisponível (fora do jogo?)");
             }
@@ -799,13 +995,16 @@ class Painel {
             nota("nada para desfazer");
             return;
         }
-        int x = lista.optJSONArray(lista.length() - 1) != null ? lista.optJSONArray(lista.length() - 1).optInt(0, -1) : -1;
-        int y = lista.optJSONArray(lista.length() - 1) != null ? lista.optJSONArray(lista.length() - 1).optInt(1, -1) : -1;
+        JSONArray ultimo = lista.optJSONArray(lista.length() - 1);
+        int[] xy = coordenadas(ultimo);
+        int x = xy == null ? -1 : xy[0];
+        int y = xy == null ? -1 : xy[1];
+        boolean caca = pontoDeCaca(ultimo);
         lista.remove(lista.length() - 1);
         campoRota.setText(lista.toString());
         campoRota.setSelection(campoRota.getText().length());
         atualizarTextoRota();
-        nota("removeu " + x + "," + y);
+        nota("removeu " + (caca ? "ponto de caça " : "") + x + "," + y);
     }
 
     private void iniciarRotaDaTela() {
@@ -815,6 +1014,7 @@ class Painel {
             if (lista.length() == 0) throw new Exception("rota vazia");
             String normal = lista.toString();
             prefs.edit().putString("rota", normal).apply();
+            acoes.definirCaca(cacaJson());
             acoes.iniciarRota(normal, repetir.isChecked(), atrasoJson());
             voltarHub();
             nota("rota com " + lista.length() + " pontos" + (repetir.isChecked() ? " · repetindo" : ""));
@@ -832,12 +1032,17 @@ class Painel {
             JSONObject antibot = s.optJSONObject("antibot");
             JSONObject sup = s.optJSONObject("suprimentos");
             JSONObject autoTarefasJson = s.optJSONObject("autoTarefas");
+            JSONObject ondaJson = s.optJSONObject("onda");
+            boolean ondaAtiva = ondaJson != null && ondaJson.optBoolean("ligado", false);
 
+            String situacaoRota = s.has("rota") && s.optJSONObject("rota") != null
+                    ? s.optJSONObject("rota").optString("situacao", "") : "";
             estado.setText("seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
-                    ? "seguindo " + s.optString("seguir")
-                    : ("rota".equals(modo) && s.has("rota") && s.optJSONObject("rota") != null
-                    && "esperando".equals(s.optJSONObject("rota").optString("situacao", ""))
+                    ? "seguindo " + s.optString("seguir") + (ondaAtiva ? " · onda" : "")
+                    : ("rota".equals(modo) && "esperando".equals(situacaoRota)
                     ? "rota · esperando"
+                    : "rota".equals(modo) && "cacando".equals(situacaoRota)
+                    ? "rota · caça"
                     : modo));
             // Mantém o cabeçalho coerente com o estado recolhido.
             estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);
@@ -854,10 +1059,15 @@ class Painel {
                         : "";
                 long pausa = s.optLong("pausa", 0);
                 String espera = pausa > 0 ? " · pausa " + Math.round(pausa / 1000.0) + "s" : "";
+                JSONObject caca = rota.optJSONObject("caca");
+                String cacaTexto = caca != null && caca.optBoolean("ativo", false)
+                        ? " · caça " + Math.round(caca.optLong("tempoMs", 0) / 1000.0)
+                        + "s (" + caca.optInt("perto", 0) + " mobs)"
+                        : "";
                 desafio.setText("desafio " + (sessao != null ? sessao.optInt("antiBot", 0) : 0)
                         + "/" + (sessao != null ? sessao.optInt("janelas", 0) : 0)
                         + alvo + (situacao.isEmpty() ? "" : " · " + situacao)
-                        + espera);
+                        + cacaTexto + espera);
                 if (rota.optInt("total", 0) > 0
                         && repetir.isChecked() != rota.optBoolean("repetir", true)) {
                     repetir.setChecked(rota.optBoolean("repetir", true));
@@ -939,6 +1149,11 @@ class Painel {
             if (areaJson != null && area != null) {
                 boolean lig = areaJson.optBoolean("ligado", false);
                 if (area.isChecked() != lig) area.setChecked(lig);
+            }
+
+            if (ondaJson != null && onda != null) {
+                boolean lig = ondaJson.optBoolean("ligado", false);
+                if (onda.isChecked() != lig) onda.setChecked(lig);
             }
 
             if (autoTarefasJson != null) {

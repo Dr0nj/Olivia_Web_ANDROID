@@ -59,12 +59,19 @@ public class MainActivity extends Activity {
             @Override public void iniciarRota(String json, boolean repetir, String atraso) {
                 chamarJs("Olivia.rota(" + json + ", { repetir: " + repetir + ", origem: 'painel', atraso: " + atraso + " })");
             }
+            @Override public void definirCaca(String json) {
+                chamarJs("Olivia.caca.definir(" + json + ")");
+            }
             @Override public void definirRepetir(boolean repetir) {
                 chamarJs("Olivia.motor.rota.repetir(" + repetir + ")");
             }
             @Override public void parar() { chamarJs("Olivia.parar()"); }
             @Override public void seguir(long id) { chamarJs("Olivia.seguir(" + id + ")"); }
             @Override public void seguir(long id, int distancia) { chamarJs("Olivia.seguir(" + id + ", " + distancia + ")"); }
+            @Override public void seguir(long id, int distancia, boolean onda) {
+                chamarJs("Olivia.seguir(" + id + ", " + distancia + ", { onda: " + onda + " })");
+            }
+            @Override public void ligarOnda(boolean ligado) { chamarJs("Olivia.onda.definir(" + ligado + ")"); }
             @Override public void ligarAntiBot(boolean ligado) { chamarJs("Olivia.antibot.definirLigado(" + ligado + ")"); }
             @Override public void ligarAutoTarefas(boolean ligado) { chamarJs("Olivia.autoTarefas.definir(" + ligado + ")"); }
             @Override public void ligarPausaHumana(boolean ligado) { chamarJs("Olivia.pausaHumana.definir(" + ligado + ")"); }
@@ -180,7 +187,9 @@ public class MainActivity extends Activity {
         if (!forcar && agora - ultimaInjecao < 1200) return;
         ultimaInjecao = agora;
         injecoes += 1;
-        String js = "window.__OVW_NATIVO=true;\n" + driver;
+        String js = "window.__OVW_NATIVO=true;\n" + driver
+                + "\ntry{if(window.Olivia&&Olivia.caca)Olivia.caca.definir(" + painel.cacaJson() + ")}catch(e){}"
+                + "\ntry{if(window.Olivia&&Olivia.onda)Olivia.onda.definir(" + painel.ondaAtiva() + ")}catch(e){}";
         web.evaluateJavascript(js, null);
         painel.nota("driver injetado (" + injecoes + ")");
     }

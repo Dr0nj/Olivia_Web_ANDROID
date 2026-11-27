@@ -8,7 +8,9 @@ const ordem = [
   "log",
   "sessao",
   "humano",
+  "caca",
   "rota",
+  "onda",
   "seguidor",
   "area",
   "suprimentos",
@@ -31,7 +33,7 @@ const cabecalho = `// ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
 // @version      ${pacote.version}
-// @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
+// @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
 // @run-at       document-idle

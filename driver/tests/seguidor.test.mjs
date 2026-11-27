@@ -55,3 +55,84 @@ test("distância 0: passo diagonal usa dx e dy", () => {
   s.seguir("5", 0);
   assert.deepEqual(s.passo({ alvo: { x: 10, y: 10 }, pos: { x: 9, y: 9 }, agora: 100 }), { acao: "passo", dx: 1, dy: 1, alvo: "5" });
 });
+
+test("seguir knight anda para a vaga da onda a 4 sqm", () => {
+  const s = criarSeguidor({ onda: true });
+  s.seguir("5", 0);
+  const d = s.passo({ alvo: { x: 10, y: 10 }, pos: { x: 0, y: 10 }, agora: 100 });
+  assert.equal(d.acao, "ir");
+  assert.deepEqual({ x: d.x, y: d.y }, { x: 6, y: 10 });
+  assert.equal(d.onda, true);
+  assert.equal(d.lado, 1);
+  assert.equal(d.face, 3);
+});
+
+test("seguir knight para na vaga e vira para o alvo", () => {
+  const s = criarSeguidor({ onda: true });
+  s.seguir("5", 0);
+  s.passo({ alvo: { x: 10, y: 10 }, pos: { x: 0, y: 10 }, agora: 100 });
+  const d = s.passo({ alvo: { x: 10, y: 10 }, pos: { x: 6, y: 10 }, agora: 200 });
+  assert.deepEqual(d, {
+    acao: "esperar",
+    motivo: "vaga-onda",
+    face: 3,
+    lado: 1,
+    vaga: { x: 6, y: 10 },
+    preferido: -1,
+  });
+});
+
+test("seguir knight troca de lado quando o alvo muda de direção", () => {
+  const s = criarSeguidor({ onda: true });
+  s.seguir("5", 0);
+  s.passo({ alvo: { x: 10, y: 10 }, pos: { x: 6, y: 10 }, agora: 100 });
+
+  // Alvo andou para leste: continua atrás (oeste), agora em 7,10.
+  const leste = s.passo({ alvo: { x: 11, y: 10 }, pos: { x: 6, y: 10 }, agora: 1200 });
+  assert.equal(leste.acao, "ir");
+  assert.deepEqual({ x: leste.x, y: leste.y }, { x: 7, y: 10 });
+
+  // Alvo andou para o norte: a vaga de trás passa a ser ao sul (11,13).
+  const norte = s.passo({ alvo: { x: 11, y: 9 }, pos: { x: 7, y: 10 }, agora: 2400 });
+  assert.equal(norte.acao, "ir");
+  assert.deepEqual({ x: norte.x, y: norte.y }, { x: 11, y: 13 });
+  assert.equal(norte.lado, 2);
+  assert.equal(norte.face, 1);
+});
+
+test("seguir knight usa os monstros do cabo para escolher o lado", () => {
+  const s = criarSeguidor({ onda: true });
+  s.seguir("5", 0);
+  const d = s.passo({
+    alvo: { x: 10, y: 10 },
+    pos: { x: 6, y: 10 },
+    agora: 100,
+    mobs: [{ x: 12, y: 10 }, { x: 13, y: 10 }],
+  });
+  assert.equal(d.acao, "ir");
+  assert.deepEqual({ x: d.x, y: d.y }, { x: 14, y: 10 });
+  assert.equal(d.lado, 0);
+  assert.equal(d.face, 2);
+});
+
+test("seguir knight evita vaga ocupada por monstro", () => {
+  const s = criarSeguidor({ onda: true });
+  s.seguir("5", 0);
+  const d = s.passo({
+    alvo: { x: 10, y: 10 },
+    pos: { x: 0, y: 10 },
+    agora: 100,
+    mobs: [{ x: 6, y: 10 }],
+  });
+  assert.equal(d.acao, "ir");
+  assert.deepEqual({ x: d.x, y: d.y }, { x: 14, y: 10 });
+});
+
+test("seguir knight pode ser desligado no meio", () => {
+  const s = criarSeguidor({ onda: true });
+  s.seguir("5", 0);
+  s.definirOnda(false);
+  const d = s.passo({ alvo: { x: 10, y: 10 }, pos: { x: 6, y: 10 }, agora: 100 });
+  assert.equal(d.acao, "ir");
+  assert.deepEqual({ x: d.x, y: d.y }, { x: 10, y: 10 });
+});

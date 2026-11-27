@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.1
-// @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
+// @version      0.9.2
+// @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
 // @run-at       document-idle
@@ -177,6 +177,208 @@ function criarHumano(opcoes) {
 }
 
 
+// Ponto de caça: a mesma ideia do HuntSpotSettings/LongRouteSession do desktop
+// (25/11/2026). Chegou no sqm marcado: para, segura até "limpar" (poucos monstros
+// no raio e mana suficiente), espera um instante para confirmar e só então sai.
+// O trem (26/11) também veio: andando com muitos monstros e preso, caça no lugar.
+//
+// A lógica é pura: não conhece jogador, jogo nem teclado. O motor da rota decide
+// quando entrar/sair e o motor de comandos manda `parar`/`ir`.
+const TREM_RAIO = 4;
+const TREM_PRESO_MS = 1500;
+const ACOMODAR_MIN_MS = 1500;
+const ACOMODAR_MAX_MS = 3000;
+// Esperas por caminho livre num trecho de caça; depois disso, a rota volta ao normal.
+const MAX_ESPERAS = 4;
+
+const CACA_PADRAO = Object.freeze({
+  raioLimpo: 3,
+  minParadoMs: 3000,
+  tetoMs: 180000,
+  manaMinPct: 30,
+  sairComMobs: 0,
+  tremMobs: 0,
+});
+
+function inteiro(valor, padrao, min, max) {
+  const n = Math.round(Number(valor));
+  if (!Number.isFinite(n)) return padrao;
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Aceita valores parciais e devolve a configuração completa, dentro dos limites do desktop. */
+function normalizarCaca(config) {
+  const c = config || {};
+  let minParadoMs = inteiro(c.minParadoMs, CACA_PADRAO.minParadoMs, 0, 60000);
+  const tetoMs = inteiro(c.tetoMs, CACA_PADRAO.tetoMs, 10000, 900000);
+  if (minParadoMs > tetoMs) minParadoMs = tetoMs;
+  return {
+    raioLimpo: inteiro(c.raioLimpo, CACA_PADRAO.raioLimpo, 1, 7),
+    minParadoMs: minParadoMs,
+    tetoMs: tetoMs,
+    manaMinPct: inteiro(c.manaMinPct, CACA_PADRAO.manaMinPct, 0, 100),
+    sairComMobs: inteiro(c.sairComMobs, CACA_PADRAO.sairComMobs, 0, 10),
+    tremMobs: inteiro(c.tremMobs, CACA_PADRAO.tremMobs, 0, 30),
+  };
+}
+
+/** Monstros vivos a até `raio` sqm (Chebyshev, como o desktop). */
+function contarMobs(pos, monstros, raio) {
+  if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return 0;
+  const lista = Array.isArray(monstros) ? monstros : [];
+  let n = 0;
+  for (const m of lista) {
+    if (!m || !Number.isFinite(m.x) || !Number.isFinite(m.y)) continue;
+    if (Math.max(Math.abs(m.x - pos.x), Math.abs(m.y - pos.y)) <= raio) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Controlador do ponto de caça.
+ *  - iniciar(agora, { noPonto, motivo }): no ponto marcado (noPonto=true) ou
+ *    esperando o caminho abrir/caçando no lugar (noPonto=false).
+ *  - passo({ agora, pos, mobs, manaPct, movendo }): { ativo:true, ... } enquanto
+ *    segura; { ativo:false, motivo } quando é hora de sair.
+ */
+function criarCaca(opcoes) {
+  const cfg = Object.assign({ aleatorio: Math.random, config: null }, opcoes || {});
+  const aleatorio = typeof cfg.aleatorio === "function" ? cfg.aleatorio : Math.random;
+  let regras = normalizarCaca(cfg.config);
+
+  let ativo = false;
+  let inicio = 0;
+  let limpoDesde = null;
+  let acomodarMs = 0;
+  let noPonto = false;
+  let motivo = "";
+  let ultimoPerto = 0;
+  let ultimoLimpo = false;
+  let ultimaManaOk = true;
+
+  function configurar(novo) {
+    regras = normalizarCaca(novo);
+    return Object.assign({}, regras);
+  }
+
+  function sortearAcomodar() {
+    const r = Math.min(0.999999, Math.max(0, Number(aleatorio()) || 0));
+    return Math.round(ACOMODAR_MIN_MS + r * (ACOMODAR_MAX_MS - ACOMODAR_MIN_MS));
+  }
+
+  function iniciar(agora, dados) {
+    const d = dados || {};
+    ativo = true;
+    inicio = Number.isFinite(agora) ? agora : 0;
+    limpoDesde = null;
+    acomodarMs = 0;
+    noPonto = !!d.noPonto;
+    motivo = d.motivo || "";
+    ultimoPerto = 0;
+    ultimoLimpo = false;
+    ultimaManaOk = true;
+    return info(agora);
+  }
+
+  function passo(entrada) {
+    const e = entrada || {};
+    const agora = Number.isFinite(e.agora) ? e.agora : 0;
+    if (!ativo) return { ativo: false, noPonto: noPonto, motivo: "parado", tempoMs: 0, perto: 0 };
+
+    const perto = contarMobs(e.pos, e.mobs, regras.raioLimpo);
+    const mana = e.manaPct == null ? NaN : Number(e.manaPct);
+    const manaOk = !Number.isFinite(mana) || mana >= regras.manaMinPct;
+    const movendo = !!e.movendo;
+
+    if (perto > regras.sairComMobs || !manaOk || movendo) {
+      limpoDesde = null;
+    } else if (limpoDesde === null) {
+      limpoDesde = agora;
+      acomodarMs = sortearAcomodar();
+    }
+
+    const limpo = limpoDesde !== null && agora - limpoDesde >= acomodarMs;
+    const tempoMs = Math.max(0, agora - inicio);
+    const minimo = noPonto ? regras.minParadoMs : 0;
+    const teto = tempoMs >= regras.tetoMs;
+
+    ultimoPerto = perto;
+    ultimoLimpo = limpo;
+    ultimaManaOk = manaOk;
+
+    if (!movendo && ((limpo && tempoMs >= minimo) || teto)) {
+      ativo = false;
+      motivo = teto
+        ? "teto de " + Math.round(regras.tetoMs / 1000) + " s atingido; saindo"
+        : "limpo; saindo";
+      return {
+        ativo: false,
+        noPonto: noPonto,
+        motivo: motivo,
+        tempoMs: tempoMs,
+        perto: perto,
+        limpo: limpo,
+        manaOk: manaOk,
+      };
+    }
+
+    motivo = perto > regras.sairComMobs
+      ? perto + " monstro(s) a até " + regras.raioLimpo + " sqm"
+      : !manaOk
+        ? "aguardando mana (" + Math.round(mana) + "%)"
+        : limpoDesde !== null
+          ? "limpo; confirmando"
+          : "aguardando";
+
+    return {
+      ativo: true,
+      noPonto: noPonto,
+      motivo: motivo,
+      tempoMs: tempoMs,
+      perto: perto,
+      limpo: limpo,
+      manaOk: manaOk,
+      esperando: !noPonto,
+    };
+  }
+
+  function info(agora) {
+    const quando = Number.isFinite(agora) ? agora : 0;
+    return {
+      ativo: ativo,
+      noPonto: noPonto,
+      tempoMs: ativo ? Math.max(0, quando - inicio) : 0,
+      perto: ultimoPerto,
+      limpo: ultimoLimpo,
+      manaOk: ultimaManaOk,
+      motivo: motivo,
+    };
+  }
+
+  function reset() {
+    ativo = false;
+    inicio = 0;
+    limpoDesde = null;
+    acomodarMs = 0;
+    noPonto = false;
+    motivo = "";
+    ultimoPerto = 0;
+    ultimoLimpo = false;
+    ultimaManaOk = true;
+  }
+
+  return {
+    iniciar,
+    passo,
+    info,
+    reset,
+    configurar,
+    config: () => Object.assign({}, regras),
+    ativa: () => ativo,
+  };
+}
+
+
 // Motor de rota: pontos em tiles, chegada por proximidade, timeout, pulo de ponto,
 // espera quando não há caminho e repetição de volta.
 //
@@ -185,7 +387,13 @@ function criarHumano(opcoes) {
 //  - chegada com raio (não precisa pisar exatamente no tile);
 //  - depois de N tentativas sem progresso, pula o ponto e tenta o próximo alcançável;
 //  - se todos os pontos falharem, espera 5 s e recomeça a volta (até 12 vezes);
-//  - a volta concluída limpa os pontos pulados.
+//  - a volta concluída limpa os pontos pulados;
+//  - ponto de caça: pisa EXATAMENTE no sqm marcado, para e segura até limpar (caca.js).
+
+// Janela em que uma mudança de posição ainda conta como "andando" (o estado do
+// cliente chega a cada ~250 ms; 500 ms evita piscar parado entre dois passos).
+const MOVENDO_JANELA_MS = 500;
+
 function criarRota(opcoes) {
   const cfg = Object.assign({
     timeoutMs: 2500,
@@ -207,11 +415,14 @@ function criarRota(opcoes) {
     aleatorio: Math.random,
     esperaMs: 5000,
     esperasMax: 12,
+    // Configuração do ponto de caça (HuntSpotSettings do desktop).
+    caca: null,
   }, opcoes || {});
 
+  const caca = criarCaca({ aleatorio: cfg.aleatorio, config: cfg.caca });
   let pontos = [];
   let indice = 0;
-  let situacao = "parada"; // parada | andando | pausada | esperando | concluida | desistiu
+  let situacao = "parada"; // parada | andando | pausada | esperando | cacando | concluida | desistiu
   let tentativas = 0;
   let desde = 0;
   let pausaAte = 0;
@@ -223,6 +434,139 @@ function criarRota(opcoes) {
   let ultimaPos = null;
   let paradoDesde = 0;
   let atraso = { modo: "off", ms: 0, minMs: 0, maxMs: 0 };
+
+  // ---- Ponto de caça (mesmas regras do LongRouteSession/HuntSpotSettings) ----
+  let cacaEsperas = 0;
+  // Trecho saindo de um ponto de caça: caminho travado espera em vez de pular.
+  let pernaCaca = false;
+  let posMovel = null;
+  let mudouEm = 0;
+
+  function limparCaca() {
+    caca.reset();
+    cacaEsperas = 0;
+    pernaCaca = false;
+    posMovel = null;
+    mudouEm = -Infinity;
+  }
+
+  function atualizarMovimento(agora, pos) {
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+    if (!posMovel) {
+      posMovel = { x: pos.x, y: pos.y };
+      // Primeira posição conhecida: não inventa que está andando. Se o personagem
+      // estiver em movimento, o próximo sqm atualiza o relógio normalmente.
+      if (!Number.isFinite(mudouEm)) mudouEm = agora - MOVENDO_JANELA_MS;
+      return;
+    }
+    if (posMovel.x !== pos.x || posMovel.y !== pos.y) {
+      posMovel = { x: pos.x, y: pos.y };
+      mudouEm = agora;
+    }
+  }
+
+  function movendo(agora) {
+    return posMovel !== null && agora - mudouEm < MOVENDO_JANELA_MS;
+  }
+
+  function pontoDeCaca(alvo) {
+    return !!(alvo && alvo.hunt);
+  }
+
+  function cacaRelacionada(alvo) {
+    return (pernaCaca || pontoDeCaca(alvo)) && cacaEsperas < MAX_ESPERAS;
+  }
+
+  function iniciarCaca(agora, noPonto, motivo) {
+    if (noPonto) {
+      cacaEsperas = 0;
+      pernaCaca = false;
+    } else {
+      cacaEsperas += 1;
+    }
+    const info = caca.iniciar(agora, { noPonto: noPonto, motivo: motivo });
+    situacao = "cacando";
+    pausaAte = 0;
+    limite = null;
+    ultimaPos = null;
+    return {
+      acao: "cacar",
+      emPonto: !!noPonto,
+      motivo: motivo,
+      perto: info.perto,
+      tempoMs: 0,
+      esperas: cacaEsperas,
+    };
+  }
+
+  function fimCaca(agora, r) {
+    const noPonto = r.noPonto;
+    situacao = "andando";
+    limite = null;
+    ultimaPos = null;
+    // Recomeça o relógio de "preso" só depois de sair da caça.
+    posMovel = null;
+    mudouEm = agora;
+    if (!noPonto) {
+      desde = agora;
+      return {
+        acao: "caca_fim",
+        fimCaca: true,
+        cacaMotivo: r.motivo,
+        emPonto: false,
+        tempoMs: r.tempoMs,
+        perto: r.perto,
+      };
+    }
+    pernaCaca = true;
+    cacaEsperas = 0;
+    indice += 1;
+    tentativas = 0;
+    desde = agora;
+    if (indice >= pontos.length) {
+      const fecho = fecharVolta(agora);
+      return Object.assign({}, fecho, {
+        fimCaca: true,
+        cacaMotivo: r.motivo,
+        emPonto: true,
+        tempoMs: r.tempoMs,
+      });
+    }
+    return {
+      acao: "avancar",
+      fimCaca: true,
+      cacaMotivo: r.motivo,
+      emPonto: true,
+      tempoMs: r.tempoMs,
+      indice: indice,
+      alvo: pontos[indice],
+      pos: null,
+    };
+  }
+
+  function processarCaca(entrada) {
+    const agora = entrada.agora;
+    const r = caca.passo({
+      agora: agora,
+      pos: entrada.pos,
+      mobs: entrada.mobs,
+      manaPct: entrada.manaPct,
+      movendo: movendo(agora),
+    });
+    if (r.ativo) {
+      return {
+        acao: "cacar",
+        emPonto: r.noPonto,
+        motivo: r.motivo,
+        perto: r.perto,
+        tempoMs: r.tempoMs,
+        limpo: r.limpo,
+        esperando: r.esperando,
+        esperas: cacaEsperas,
+      };
+    }
+    return fimCaca(agora, r);
+  }
 
   function definirAtraso(c) {
     if (!c || c.modo === "off" || c.ligado === false) {
@@ -268,7 +612,11 @@ function criarRota(opcoes) {
       const pausa = !Array.isArray(p) && Number.isFinite(p && p.pausaMs)
         ? Math.max(0, p.pausaMs)
         : cfg.pausaPadraoMs;
-      return { x: x, y: y, pausaMs: pausa };
+      // Marca de caça: {x,y,hunt:true}, {x,y,caca:true}, [x,y,"h"] ou [x,y,true].
+      const hunt = Array.isArray(p)
+        ? p[2] === "h" || p[2] === true || p[3] === "h"
+        : !!(p && (p.hunt === true || p.hunt === "h" || p.caca === true || p.caca === "h" || p.h === "h" || p.h === true));
+      return { x: x, y: y, pausaMs: pausa, hunt: hunt };
     });
   }
 
@@ -281,6 +629,7 @@ function criarRota(opcoes) {
     volta = 0;
     pulados = new Set();
     esperas = 0;
+    limparCaca();
     return pontos.length;
   }
 
@@ -314,6 +663,7 @@ function criarRota(opcoes) {
     pulados = new Set();
     esperas = 0;
     ultimaPos = null;
+    limparCaca();
     situacao = "andando";
     return true;
   }
@@ -334,6 +684,7 @@ function criarRota(opcoes) {
     situacao = "parada";
     pausaAte = 0;
     finalizando = false;
+    limparCaca();
   }
 
   function posicionar(i) {
@@ -344,6 +695,7 @@ function criarRota(opcoes) {
     limite = null;
     pulados = new Set();
     ultimaPos = null;
+    limparCaca();
     return true;
   }
 
@@ -427,10 +779,24 @@ function criarRota(opcoes) {
     return situacao === "esperando" ? Math.max(0, pausaAte - agora) : 0;
   }
 
-  // Decisão do tick: ir | repetir | pular | sem_caminho | esperar | avancar | volta | concluir | desistir
+  function definirCaca(config) {
+    return caca.configurar(config);
+  }
+
+  function cacaInfo(agora) {
+    const quando = Number.isFinite(agora) ? agora : 0;
+    return Object.assign({}, caca.info(quando), {
+      situacao: situacao,
+      esperas: cacaEsperas,
+      pernaCaca: pernaCaca,
+    });
+  }
+
+  // Decisão do tick: ir | repetir | pular | sem_caminho | esperar | avancar | volta | concluir | desistir | cacar | caca_fim
   function passo(entrada) {
     const agora = entrada.agora;
     const pos = entrada.pos;
+    const mobs = Array.isArray(entrada.mobs) ? entrada.mobs : [];
 
     if (situacao === "esperando") {
       if (agora < pausaAte) return { acao: "esperar", motivo: "sem-caminho" };
@@ -441,8 +807,15 @@ function criarRota(opcoes) {
       return { acao: "esperar", motivo: "recomeco" };
     }
 
+    if (situacao === "cacando") {
+      if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
+      atualizarMovimento(agora, pos);
+      return processarCaca(entrada);
+    }
+
     if (situacao !== "andando") return null;
     if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
+    atualizarMovimento(agora, pos);
     if (pausaAte !== 0) {
       if (agora < pausaAte) return { acao: "esperar", motivo: "pausa" };
       // Pausa terminou: o prazo da próxima perna começa agora.
@@ -469,9 +842,16 @@ function criarRota(opcoes) {
     const parado = !mudou && agora - paradoDesde >= cfg.settleMs;
 
     const exato = pos.x === alvo.x && pos.y === alvo.y;
-    const perto = !exato && cheb(pos, alvo) <= cfg.raioChegada && parado;
+    // Ponto de caça só "chega" pisando no sqm exato (como o desktop): aceitar o
+    // raio deixava o personagem parado dois sqm antes e caçando longe do ponto.
+    const perto = !exato && !pontoDeCaca(alvo) && cheb(pos, alvo) <= cfg.raioChegada && parado;
 
     if (exato || perto) {
+      if (exato && pontoDeCaca(alvo)) {
+        return iniciarCaca(agora, true, "chegou no ponto de caça " + alvo.x + "," + alvo.y);
+      }
+      pernaCaca = false;
+      cacaEsperas = 0;
       indice += 1;
       tentativas = 0;
       desde = agora;
@@ -491,12 +871,30 @@ function criarRota(opcoes) {
       return { acao: "avancar", indice: indice, alvo: pontos[indice], perto: perto, pos: pos };
     }
 
+    // Trem preso (26/11): andando com N+ monstros a até 4 sqm e sem mudar de sqm
+    // por 1,5 s, caça no lugar em vez de esperar o caminho abrir.
+    const regras = caca.config();
+    if (regras.tremMobs > 0 && cacaEsperas < MAX_ESPERAS
+        && agora - mudouEm >= TREM_PRESO_MS
+        && contarMobs(pos, mobs, TREM_RAIO) >= regras.tremMobs) {
+      const quantos = contarMobs(pos, mobs, TREM_RAIO);
+      return iniciarCaca(agora, false,
+        "preso com " + quantos + " monstros em " + pos.x + "," + pos.y + "; caçando no lugar");
+    }
+
     if (agora - desde > limite) {
       tentativas += 1;
       if (tentativas < cfg.pularApos) {
         desde = agora;
         limite = prazoDe(pos, alvo);
         return { acao: "repetir", x: alvo.x, y: alvo.y, indice: indice, tentativa: tentativas };
+      }
+      // Trecho de caça travado: espera o caminho abrir no lugar em vez de pular
+      // (o pulo de waypoint levava a beco no desktop). Depois de MAX_ESPERAS, normal.
+      if (cacaRelacionada(alvo)) {
+        return iniciarCaca(agora, false, pontoDeCaca(alvo)
+          ? "caminho travado no ponto de caça " + alvo.x + "," + alvo.y + "; esperando abrir"
+          : "caminho travado no trecho de caça; esperando abrir");
       }
       return pularAtual(agora);
     }
@@ -515,9 +913,12 @@ function criarRota(opcoes) {
     pularAtual,
     definirAtraso,
     atrasoConfig: () => Object.assign({}, atraso),
+    definirCaca,
+    cacaConfig: () => caca.config(),
+    cacaInfo,
     repetir,
     definirVolta,
-    pontos: () => pontos.map((p) => ({ x: p.x, y: p.y, pausaMs: p.pausaMs })),
+    pontos: () => pontos.map((p) => ({ x: p.x, y: p.y, pausaMs: p.pausaMs, hunt: !!p.hunt })),
     total: () => pontos.length,
     indice: () => indice,
     situacao: () => situacao,
@@ -530,20 +931,221 @@ function criarRota(opcoes) {
 }
 
 
+// Seguir knight: mantém o personagem na vaga da onda, com o alvo no centro do 3x3.
+//
+// Área real da Energy Surge vista no jogo: 2 pisos retos e depois 3 fileiras de 3
+// (1,1,3,3,3), na direção em que o personagem está virado. A 4 sqm do alvo, a
+// fileira 3x3 fica centrada no alvo: o knight ocupa o centro dos 9 e os dois pisos
+// retos ficam atrás dele, entre o knight e quem está seguindo.
+//
+// Isto só escolhe a vaga e a direção. Nenhuma magia é disparada daqui.
+const DISTANCIA_ONDA = 4;
+
+// Lados do eixo em volta do alvo: 0=leste(+x), 1=oeste(-x), 2=sul(+y), 3=norte(-y).
+const EIXOS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// Direção para olhar da vaga até o alvo, no formato do cliente web:
+// 0=baixo, 1=cima, 2=esquerda, 3=direita (o mesmo `a` de {t:"pc",k:"xd"}).
+const FACE_ALVO = [2, 3, 1, 0];
+
+function passoDaFace(face) {
+  if (face === 0) return [0, 1];
+  if (face === 1) return [0, -1];
+  if (face === 2) return [-1, 0];
+  if (face === 3) return [1, 0];
+  return [0, 0];
+}
+
+/** A área 1,1,3,3,3 saindo de (px,py) virada para `face` acerta (mx,my)? */
+function ondaAcerta(px, py, face, mx, my) {
+  const passo = passoDaFace(face);
+  const dx = passo[0];
+  const dy = passo[1];
+  if (!dx && !dy) return false;
+  const along = (mx - px) * dx + (my - py) * dy;
+  const lado = Math.abs((mx - px) * dy - (my - py) * dx);
+  return along >= 1 && along <= 5 && (along <= 2 ? lado === 0 : lado <= 1);
+}
+
+/** Vaga de um lado do alvo, a `distancia` sqm (4 = 3x3 centrado no alvo). */
+function vaga(alvo, lado, distancia) {
+  const d = EIXOS[lado];
+  const n = Number.isFinite(distancia) ? distancia : DISTANCIA_ONDA;
+  return { x: alvo.x + d[0] * n, y: alvo.y + d[1] * n };
+}
+
+function faceDoLado(lado) {
+  return Number.isInteger(lado) && lado >= 0 && lado < FACE_ALVO.length ? FACE_ALVO[lado] : -1;
+}
+
+/** Monstros vivos que a onda acerta saindo desta vaga, virada para o alvo. */
+function contarAcertos(posicao, face, monstros) {
+  const lista = Array.isArray(monstros) ? monstros : [];
+  let total = 0;
+  for (const m of lista) {
+    if (!m || !Number.isFinite(m.x) || !Number.isFinite(m.y)) continue;
+    if (ondaAcerta(posicao.x, posicao.y, face, m.x, m.y)) total += 1;
+  }
+  return total;
+}
+
+/** Quantos monstros ficam de cada lado da linha do feixe (o menor dos lados). */
+function equilibrio(alvo, lado, monstros) {
+  const d = EIXOS[lado];
+  const lista = Array.isArray(monstros) ? monstros : [];
+  let esquerda = 0;
+  let direita = 0;
+  for (const m of lista) {
+    if (!m || !Number.isFinite(m.x) || !Number.isFinite(m.y)) continue;
+    const rx = m.x - alvo.x;
+    const ry = m.y - alvo.y;
+    if (Math.abs(rx) > 5 || Math.abs(ry) > 5) continue;
+    const perpendicular = rx * d[1] - ry * d[0];
+    if (perpendicular > 0) esquerda += 1;
+    else if (perpendicular < 0) direita += 1;
+  }
+  return Math.min(esquerda, direita);
+}
+
+/** Vaga atrás do alvo conforme a última direção em que ele andou. */
+function ladoAtras(dx, dy) {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || (!dx && !dy)) return -1;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? 1 : 0;
+  return dy > 0 ? 3 : 2;
+}
+
+function podeAndar(caminavel, casa) {
+  return !caminavel || caminavel(casa.x, casa.y);
+}
+
+/** Vaga válida mais perto de mim (desempate quando não há monstro na onda). */
+function ladoMaisPerto(alvo, pos, distancia, caminavel) {
+  let melhor = -1;
+  let custo = Infinity;
+  for (let lado = 0; lado < EIXOS.length; lado += 1) {
+    const casa = vaga(alvo, lado, distancia);
+    if (!podeAndar(caminavel, casa)) continue;
+    const d = Math.abs(casa.x - pos.x) + Math.abs(casa.y - pos.y);
+    if (d < custo) {
+      custo = d;
+      melhor = lado;
+    }
+  }
+  if (melhor >= 0) return melhor;
+  // Todas as vagas parecem bloqueadas: escolhe a mais perto mesmo assim.
+  custo = Infinity;
+  for (let lado = 0; lado < EIXOS.length; lado += 1) {
+    const casa = vaga(alvo, lado, distancia);
+    const d = Math.abs(casa.x - pos.x) + Math.abs(casa.y - pos.y);
+    if (d < custo) {
+      custo = d;
+      melhor = lado;
+    }
+  }
+  return melhor;
+}
+
+/** Melhor lado para a onda: mais monstros no feixe. Se o alvo tem direção
+ *  conhecida, a vaga de trás (preferido) ganha, a não ser que outro lado acerte
+ *  pelo menos 2 monstros a mais. Sem monstros, usa a vaga de trás. */
+function melhorLado(alvo, pos, monstros, preferido, caminavel, distancia) {
+  let melhor = -1;
+  let melhorAcertos = 0;
+  let melhorEquilibrio = -1;
+  let melhorCusto = Infinity;
+
+  for (let lado = 0; lado < EIXOS.length; lado += 1) {
+    const casa = vaga(alvo, lado, distancia);
+    if (!podeAndar(caminavel, casa)) continue;
+    const acertos = contarAcertos(casa, FACE_ALVO[lado], monstros);
+    if (acertos === 0) continue;
+    const bal = equilibrio(alvo, lado, monstros);
+    const custo = Math.abs(casa.x - pos.x) + Math.abs(casa.y - pos.y);
+    if (acertos > melhorAcertos
+      || (acertos === melhorAcertos && (bal > melhorEquilibrio
+        || (bal === melhorEquilibrio && custo < melhorCusto)))) {
+      melhor = lado;
+      melhorAcertos = acertos;
+      melhorEquilibrio = bal;
+      melhorCusto = custo;
+    }
+  }
+
+  if (preferido >= 0) {
+    const casa = vaga(alvo, preferido, distancia);
+    if (podeAndar(caminavel, casa)) {
+      const acertos = contarAcertos(casa, FACE_ALVO[preferido], monstros);
+      if (melhor < 0 || melhorAcertos < acertos + 2) return preferido;
+    }
+  }
+
+  if (melhor >= 0) return melhor;
+  return ladoMaisPerto(alvo, pos, distancia, caminavel);
+}
+
+/** Escolhe o lado com histerese: troca com +2 monstros de vantagem; se o lado
+ *  atual não acerta ninguém e outro acerta, troca na hora. */
+function decidirLado(opcoes) {
+  const cfg = opcoes || {};
+  const alvo = cfg.alvo;
+  const pos = cfg.pos;
+  const monstros = Array.isArray(cfg.monstros) ? cfg.monstros : [];
+  const ladoAtual = Number.isInteger(cfg.ladoAtual) ? cfg.ladoAtual : -1;
+  const preferido = Number.isInteger(cfg.preferido) ? cfg.preferido : -1;
+  const caminavel = cfg.caminavel;
+  const distancia = cfg.distancia;
+
+  const melhor = melhorLado(alvo, pos, monstros, preferido, caminavel, distancia);
+  if (ladoAtual < 0 || melhor < 0 || ladoAtual === melhor) return melhor;
+
+  // O alvo mudou de direção e a melhor vaga agora é a de trás: acompanha sem
+  // esperar vantagem, para o feixe voltar a apontar para onde ele está indo.
+  if (preferido >= 0 && melhor === preferido) return melhor;
+
+  const casaAtual = vaga(alvo, ladoAtual, distancia);
+  if (!podeAndar(caminavel, casaAtual)) return melhor;
+
+  const acertosAtual = contarAcertos(casaAtual, FACE_ALVO[ladoAtual], monstros);
+  const acertosMelhor = contarAcertos(vaga(alvo, melhor, distancia), FACE_ALVO[melhor], monstros);
+  if (acertosMelhor === 0) return melhor;
+  if (acertosAtual === 0 || acertosMelhor >= acertosAtual + 2) return melhor;
+  return ladoAtual;
+}
+
+
 // Seguidor: mantém o personagem colado a um alvo (jogador) e desiste se o alvo sumir.
+// Com "seguir knight" (onda) ligado, fica a 4 sqm do alvo, na mesma linha/coluna,
+// escolhendo o lado que a área 1,1,3,3,3 acerta mais monstros e virando para o alvo.
+
 function criarSeguidor(opcoes) {
-  const cfg = Object.assign({ alcance: 1, perdaMs: 5000 }, opcoes || {});
+  const cfg = Object.assign({
+    alcance: 1,
+    perdaMs: 5000,
+    onda: false,
+    distanciaOnda: DISTANCIA_ONDA,
+    intervaloOndaMs: 1000,
+  }, opcoes || {});
 
   let alvoId = null;
   let vistoEm = 0;
   let situacao = "parada"; // parada | seguindo | perdeu
   let passoEm = 0;
 
+  // Estado do seguir knight.
+  let ladoOnda = -1;
+  let avaliadoEm = 0;
+  let posAlvoAnterior = null;
+  let direcaoAlvo = null;
+
   function seguir(id, agora) {
     alvoId = String(id);
     vistoEm = agora;
     situacao = "seguindo";
     passoEm = 0;
+    ladoOnda = -1;
+    avaliadoEm = 0;
+    posAlvoAnterior = null;
+    direcaoAlvo = null;
     return true;
   }
 
@@ -551,6 +1153,10 @@ function criarSeguidor(opcoes) {
     alvoId = null;
     situacao = "parada";
     passoEm = 0;
+    ladoOnda = -1;
+    avaliadoEm = 0;
+    posAlvoAnterior = null;
+    direcaoAlvo = null;
   }
 
   function definirAlcance(v) {
@@ -559,11 +1165,89 @@ function criarSeguidor(opcoes) {
     return cfg.alcance;
   }
 
+  function definirOnda(v) {
+    cfg.onda = !!v;
+    ladoOnda = -1;
+    avaliadoEm = 0;
+    return cfg.onda;
+  }
+
   function distancia(a, b) {
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   }
 
-  // Retorna: ir | esperar | perdeu | null
+  function alcanceEfetivo() {
+    return cfg.onda ? cfg.distanciaOnda : cfg.alcance;
+  }
+
+  // Atualiza a direção do alvo a partir do último passo dele. Passos diagonais
+  // usam o eixo dominante para não perder a referência de "atrás".
+  function lembrarDirecao(alvo) {
+    if (posAlvoAnterior
+      && (posAlvoAnterior.x !== alvo.x || posAlvoAnterior.y !== alvo.y)) {
+      const dx = alvo.x - posAlvoAnterior.x;
+      const dy = alvo.y - posAlvoAnterior.y;
+      if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx || dy)) {
+        direcaoAlvo = { dx: dx, dy: dy };
+      }
+    }
+    posAlvoAnterior = { x: alvo.x, y: alvo.y };
+  }
+
+  function passoOnda(alvo, pos, entrada, agora) {
+    lembrarDirecao(alvo);
+
+    const preferido = direcaoAlvo ? ladoAtras(direcaoAlvo.dx, direcaoAlvo.dy) : -1;
+    const ocupadas = new Set();
+    if (Array.isArray(entrada.mobs)) {
+      for (const m of entrada.mobs) {
+        if (m && Number.isFinite(m.x) && Number.isFinite(m.y)) ocupadas.add(m.x + "," + m.y);
+      }
+    }
+    const podeAndar = function (x, y) {
+      if (entrada.caminavel && !entrada.caminavel(x, y)) return false;
+      return !ocupadas.has(x + "," + y);
+    };
+
+    if (ladoOnda < 0 || agora >= avaliadoEm) {
+      avaliadoEm = agora + cfg.intervaloOndaMs;
+      ladoOnda = decidirLado({
+        alvo: alvo,
+        pos: pos,
+        monstros: entrada.mobs,
+        ladoAtual: ladoOnda,
+        preferido: preferido,
+        caminavel: podeAndar,
+        distancia: cfg.distanciaOnda,
+      });
+    }
+
+    if (ladoOnda < 0) return { acao: "esperar", motivo: "sem-vaga" };
+
+    const casa = vaga(alvo, ladoOnda, cfg.distanciaOnda);
+    const face = faceDoLado(ladoOnda);
+    if (pos.x === casa.x && pos.y === casa.y) {
+      return {
+        acao: "esperar",
+        motivo: "vaga-onda",
+        face: face,
+        lado: ladoOnda,
+        vaga: casa,
+        preferido: preferido,
+      };
+    }
+    return {
+      acao: "ir",
+      x: casa.x,
+      y: casa.y,
+      alvo: alvoId,
+      onda: true,
+      lado: ladoOnda,
+      face: face,
+    };
+  }
+
+  // Retorna: ir | esperar | passo | perdeu | null
   function passo(entrada) {
     if (situacao !== "seguindo") return null;
     const agora = entrada.agora;
@@ -573,6 +1257,8 @@ function criarSeguidor(opcoes) {
     if (alvo && Number.isFinite(alvo.x) && Number.isFinite(alvo.y)) {
       vistoEm = agora;
       if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
+      if (cfg.onda) return passoOnda(alvo, pos, entrada, agora);
+
       const dist = distancia(pos, alvo);
       if (dist <= cfg.alcance) return { acao: "esperar", motivo: "colado" };
 
@@ -605,7 +1291,12 @@ function criarSeguidor(opcoes) {
     parar,
     passo,
     definirAlcance,
+    definirOnda,
     alcance: () => cfg.alcance,
+    alcanceEfetivo: alcanceEfetivo,
+    onda: () => cfg.onda,
+    distanciaOnda: () => cfg.distanciaOnda,
+    lado: () => ladoOnda,
     alvo: () => alvoId,
     situacao: () => situacao,
   };
@@ -912,7 +1603,14 @@ function criarPonteNavegador() {
   function entidade(id) {
     const e = entidadeDe("j" + id) || entidadeDe("m" + id);
     if (!e || !Number.isFinite(e.x) || !Number.isFinite(e.y)) return null;
-    return { x: e.x, y: e.y, nome: e.nombre || e.nome || null };
+    return {
+      x: e.x,
+      y: e.y,
+      nome: e.nombre || e.nome || null,
+      piso: Number.isFinite(e.piso) ? e.piso : null,
+      mundo: Number.isFinite(e.mundo) ? e.mundo : null,
+      morto: !!e.muerto,
+    };
   }
 
   // Jogadores visíveis (entidades "j..."), do mais perto para o mais longe.
@@ -986,6 +1684,14 @@ function criarPonteNavegador() {
       // sem Pelea: manda a mesma mensagem
     }
     return enviar({ t: "objetivo", monstruo: id });
+  }
+
+  // Gira sem andar. Formato da tecla Ctrl+seta do cliente:
+  // a = 0 baixo, 1 cima, 2 esquerda, 3 direita.
+  function girar(face) {
+    const a = Number(face);
+    if (!Number.isInteger(a) || a < 0 || a > 3) return false;
+    return enviar({ t: "pc", k: "xd", d: { a: a } });
   }
 
   function aoReceber(tipo, fn) {
@@ -1064,7 +1770,7 @@ function criarPonteNavegador() {
 
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, caminavel, monstros, objetivo, mirar,
+    inventario, suprimentos, caminavel, monstros, objetivo, mirar, girar,
   };
 }
 
@@ -1096,10 +1802,12 @@ function criarMotor(opcoes) {
   let ultimoAlvo = "";
   let pausadoAte = 0;
   let seguindoId = null;
+  let ultimoGiro = 0;
   let ultimoPersonagem = null;
   let ultimoMotivoParada = null;
   let trecho = null; // trecho atual: { destino, alvo }
   let pisoRota = null;
+  let emCaca = false;
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -1140,6 +1848,7 @@ function criarMotor(opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
     rota.definirAtraso(opcoes ? opcoes.atraso : null);
+    if (opcoes && opcoes.caca) rota.definirCaca(opcoes.caca);
     const st = cfg.ponte.estado ? cfg.ponte.estado() : null;
     const pos = st && st.pos ? st.pos : null;
     if (!rota.iniciar(cfg.agora(), pos)) return 0;
@@ -1150,6 +1859,7 @@ function criarMotor(opcoes) {
     trecho = null;
     pisoRota = pos && Number.isInteger(pos.z) ? pos.z : null;
     ultimoMotivoParada = null;
+    emCaca = false;
     const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
@@ -1159,20 +1869,37 @@ function criarMotor(opcoes) {
       proximo: alvo ? alvo.x + "," + alvo.y : "",
       maisProximo: !(opcoes && Number.isInteger(opcoes.indice)),
       atraso: rota.atrasoConfig(),
-      pontos: rota.pontos().map((p) => p.x + "," + p.y).join(";"),
+      caca: rota.cacaConfig(),
+      pontos: rota.pontos().map((p) => p.x + "," + p.y + (p.hunt ? "h" : "")).join(";"),
     });
     return total;
   }
 
-  function seguir(id, alcance) {
+  function seguir(id, alcance, opcoes) {
+    const o = opcoes || {};
     if (alcance !== undefined) seguidor.definirAlcance(alcance);
+    if (o.onda !== undefined) seguidor.definirOnda(o.onda);
     seguindoId = String(id);
     seguidor.seguir(seguindoId, cfg.agora());
     modo = "seguir";
     ultimoAlvo = "";
     trecho = null;
-    registro.evento("seguir_inicio", { alvo: seguindoId, sqm: seguidor.alcance() });
+    ultimoGiro = 0;
+    registro.evento("seguir_inicio", {
+      alvo: seguindoId,
+      sqm: seguidor.alcanceEfetivo(),
+      onda: seguidor.onda(),
+    });
     return true;
+  }
+
+  function definirOnda(ligado) {
+    const estado = seguidor.definirOnda(ligado);
+    ultimoAlvo = "";
+    trecho = null;
+    ultimoGiro = 0;
+    registro.evento("seguir_onda", { ligado: estado, sqm: seguidor.alcanceEfetivo() });
+    return estado;
   }
 
   function parar(motivo) {
@@ -1182,7 +1909,9 @@ function criarMotor(opcoes) {
     seguindoId = null;
     ultimoAlvo = "";
     trecho = null;
+    ultimoGiro = 0;
     pisoRota = null;
+    emCaca = false;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
     sessao.parada();
@@ -1232,8 +1961,39 @@ function criarMotor(opcoes) {
         }
       }
 
-      const d = rota.passo({ pos: st.pos, agora: agora });
+      const mobs = cfg.ponte.monstros ? cfg.ponte.monstros() : [];
+      const manaPct = st.mana != null && st.manaMax
+        ? (st.mana / st.manaMax) * 100
+        : null;
+      const d = rota.passo({ pos: st.pos, agora: agora, mobs: mobs, manaPct: manaPct });
       if (!d) return;
+
+      // Ponto de caça: para o personagem e fica segurando até a rota mandar sair.
+      if (d.acao === "cacar") {
+        if (!emCaca) {
+          emCaca = true;
+          ultimoAlvo = "";
+          trecho = null;
+          cfg.ponte.enviar({ t: "parar" });
+          registro.evento("caca_inicio", {
+            emPonto: !!d.emPonto,
+            motivo: d.motivo,
+            perto: d.perto,
+            pos: st.pos,
+          });
+        }
+        return;
+      }
+      if (emCaca) {
+        emCaca = false;
+        registro.evento("caca_fim", {
+          motivo: d.cacaMotivo || d.motivo || "",
+          emPonto: !!d.emPonto,
+          tempoMs: d.tempoMs,
+          perto: d.perto,
+          pos: st.pos,
+        });
+      }
 
       if (d.acao === "ir" && cfg.ponte.caminavel && !cfg.ponte.caminavel(d.x, d.y)) {
         const r = rota.pularAtual(agora);
@@ -1289,11 +2049,27 @@ function criarMotor(opcoes) {
 
     if (modo === "seguir") {
       const alvo = cfg.ponte.entidade(seguindoId);
-      const d = seguidor.passo({ alvo: alvo, pos: st.pos, agora: agora });
+      const mobs = cfg.ponte.monstros ? cfg.ponte.monstros() : [];
+      const d = seguidor.passo({
+        alvo: alvo,
+        pos: st.pos,
+        agora: agora,
+        mobs: mobs,
+        caminavel: cfg.ponte.caminavel,
+      });
       if (!d) return;
       if (d.acao === "ir") {
         const alvo = proximoTrecho({ x: d.x, y: d.y }, st.pos);
         enviarIr(alvo.x, alvo.y, false);
+        return;
+      }
+      if (d.acao === "esperar" && Number.isInteger(d.face)) {
+        // Na vaga da onda: vira para o alvo para o feixe atravessar o 3x3.
+        // `pc` só gira; repete devagar porque o cliente não informa a direção atual.
+        if (agora - ultimoGiro >= 1200) {
+          ultimoGiro = agora;
+          if (cfg.ponte.girar) cfg.ponte.girar(d.face);
+        }
         return;
       }
       if (d.acao === "passo") {
@@ -1339,12 +2115,14 @@ function criarMotor(opcoes) {
     tick,
     iniciarRota,
     seguir,
+    definirOnda,
     parar,
     modo: () => modo,
     pausadoAte: () => pausadoAte,
     pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
     ultimoMotivo: () => ultimoMotivoParada,
     rota,
+    cacaInfo: () => rota.cacaInfo(cfg.agora()),
     seguidor,
     sessao,
     humano,
@@ -1397,9 +2175,27 @@ function criarPainel(opcoes) {
     const bruto = JSON.parse(texto);
     if (!Array.isArray(bruto)) throw new Error("JSON precisa ser uma lista");
     return bruto.map(function (p) {
-      if (Array.isArray(p)) return { x: Number(p[0]), y: Number(p[1]) };
-      return { x: Number(p.x), y: Number(p.y), pausaMs: Number(p.pausaMs) || 0 };
+      const hunt = Array.isArray(p)
+        ? p[2] === "h" || p[2] === true
+        : !!(p.hunt === true || p.hunt === "h" || p.caca === true || p.h === "h" || p.h === true);
+      if (Array.isArray(p)) return { x: Number(p[0]), y: Number(p[1]), pausaMs: 0, hunt: hunt };
+      return {
+        x: Number(p.x),
+        y: Number(p.y),
+        pausaMs: Number(p.pausaMs) || 0,
+        hunt: hunt,
+      };
     });
+  }
+
+  function textoRota(pontos) {
+    return JSON.stringify(pontos.map(function (p) {
+      if (!p.hunt && !(p.pausaMs > 0)) return [p.x, p.y];
+      const o = { x: p.x, y: p.y };
+      if (p.pausaMs > 0) o.pausaMs = p.pausaMs;
+      if (p.hunt) o.hunt = true;
+      return o;
+    }));
   }
 
   function montar() {
@@ -1469,6 +2265,42 @@ function criarPainel(opcoes) {
     try { campoRota.value = localStorage.getItem("ovw.rota") || ""; } catch (e) {}
     raiz.appendChild(campoRota);
 
+    function marcarPonto(caca) {
+      let pos = null;
+      try {
+        const st = window.Olivia && window.Olivia.estado ? window.Olivia.estado() : null;
+        pos = st && st.jogo ? st.jogo.pos : null;
+      } catch (e) {
+        pos = null;
+      }
+      if (!pos || !Number.isInteger(pos.x) || !Number.isInteger(pos.y)) {
+        alert("Posição indisponível (fora do jogo?)");
+        return;
+      }
+      let pontos;
+      try {
+        pontos = lerRota(campoRota.value || "[]");
+      } catch (e) {
+        alert("Rota inválida: " + e.message);
+        return;
+      }
+      const ultimo = pontos[pontos.length - 1];
+      if (ultimo && ultimo.x === pos.x && ultimo.y === pos.y) {
+        if (!!ultimo.hunt === !!caca) return;
+        ultimo.hunt = !!caca;
+      } else {
+        pontos.push({ x: pos.x, y: pos.y, pausaMs: 0, hunt: !!caca });
+      }
+      campoRota.value = textoRota(pontos);
+      try { localStorage.setItem("ovw.rota", campoRota.value); } catch (e) { /* sem storage */ }
+      atualizar();
+    }
+
+    const marcar = linha({ marginTop: "4px" });
+    marcar.appendChild(botao("Marcar aqui", function () { marcarPonto(false); }));
+    marcar.appendChild(botao("Ponto de caça", function () { marcarPonto(true); }));
+    raiz.appendChild(marcar);
+
     const acoes = linha({ marginTop: "6px" });
     acoes.appendChild(botao("Iniciar", function () {
       try {
@@ -1497,9 +2329,79 @@ function criarPainel(opcoes) {
     repetir.appendChild(el("span", null, "Repetir a rota"));
     raiz.appendChild(repetir);
 
+    // Configuração do ponto de caça (HuntSpotSettings do desktop).
+    const secao = document.createElement("details");
+    secao.style.marginTop = "6px";
+    const resumo = document.createElement("summary");
+    resumo.textContent = "Ponto de caça";
+    resumo.style.cursor = "pointer";
+    resumo.style.color = "#cfe3f2";
+    secao.appendChild(resumo);
+
+    const grade = el("div", {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "4px",
+      marginTop: "4px",
+    });
+    const regras = motor.rota.cacaConfig();
+    const campos = [
+      { chave: "raioLimpo", rotulo: "Livre (sqm)", min: 1, max: 7, fator: 1 },
+      { chave: "minParadoMs", rotulo: "Mínimo (s)", min: 0, max: 60, fator: 1000 },
+      { chave: "tetoMs", rotulo: "Teto (s)", min: 10, max: 900, fator: 1000 },
+      { chave: "manaMinPct", rotulo: "Mana (%)", min: 0, max: 100, fator: 1 },
+      { chave: "sairComMobs", rotulo: "Sair c/ mobs", min: 0, max: 10, fator: 1 },
+      { chave: "tremMobs", rotulo: "Trem (mobs)", min: 0, max: 30, fator: 1 },
+    ];
+    partes.cacaCampos = {};
+    campos.forEach(function (c) {
+      const caixa = el("label", { display: "flex", flexDirection: "column", fontSize: "9.5px", color: "#9fb3c2" });
+      caixa.appendChild(el("span", null, c.rotulo));
+      const campo = el("input", {
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "2px 4px",
+        border: "1px solid #3d5566",
+        borderRadius: "3px",
+        background: "#0d1720",
+        color: "#cfe3f2",
+        font: "10.5px ui-monospace, monospace",
+      });
+      campo.type = "number";
+      campo.min = String(c.min);
+      campo.max = String(c.max);
+      campo.value = String(Math.round((regras[c.chave] || 0) / c.fator));
+      partes.cacaCampos[c.chave] = { campo: campo, fator: c.fator };
+      caixa.appendChild(campo);
+      grade.appendChild(caixa);
+    });
+    secao.appendChild(grade);
+    const statusCaca = el("div", { fontSize: "9.5px", color: "#6f8a9c", marginTop: "3px" },
+      "Chegou no sqm: segura até sobrar o limite de monstros.");
+    secao.appendChild(statusCaca);
+    secao.appendChild(botao("Salvar caça", function () {
+      const novo = {};
+      Object.keys(partes.cacaCampos).forEach(function (chave) {
+        const info = partes.cacaCampos[chave];
+        novo[chave] = Math.round(Number(info.campo.value) || 0) * info.fator;
+      });
+      let aplicado;
+      try {
+        aplicado = window.Olivia && window.Olivia.caca
+          ? window.Olivia.caca.definir(novo)
+          : motor.rota.definirCaca(novo);
+      } catch (e) {
+        aplicado = motor.rota.definirCaca(novo);
+      }
+      statusCaca.textContent = "Caça: livre " + aplicado.raioLimpo + " sqm · mínimo "
+        + Math.round(aplicado.minParadoMs / 1000) + " s · teto "
+        + Math.round(aplicado.tetoMs / 1000) + " s · mana " + aplicado.manaMinPct + "%";
+    }));
+    raiz.appendChild(secao);
+
     const seguir = linha({ marginTop: "6px" });
     partes.idAlvo = el("input", {
-      width: "82px",
+      width: "72px",
       padding: "4px 5px",
       border: "1px solid #3d5566",
       borderRadius: "4px",
@@ -1510,13 +2412,66 @@ function criarPainel(opcoes) {
     partes.idAlvo.placeholder = "id do jogador";
     partes.idAlvo.inputMode = "numeric";
     seguir.appendChild(partes.idAlvo);
+
+    partes.distancia = el("input", {
+      width: "34px",
+      padding: "4px 3px",
+      border: "1px solid #3d5566",
+      borderRadius: "4px",
+      background: "#0d1720",
+      color: "#cfe3f2",
+      font: "11px ui-monospace, monospace",
+      textAlign: "center",
+    });
+    partes.distancia.type = "number";
+    partes.distancia.min = "0";
+    partes.distancia.max = "8";
+    partes.distancia.title = "distância em sqm (0 = mesmo tile)";
+    try { partes.distancia.value = localStorage.getItem("ovw.seguirSqm") || "1"; } catch (e) { partes.distancia.value = "1"; }
+    seguir.appendChild(partes.distancia);
+
     seguir.appendChild(botao("Seguir", function () {
       const id = Number(partes.idAlvo.value);
       if (!Number.isInteger(id) || id <= 0) return;
-      motor.seguir(id);
+      const onda = !!(partes.onda && partes.onda.checked);
+      let dist = Number(partes.distancia.value);
+      if (!Number.isFinite(dist)) dist = 1;
+      dist = Math.max(0, Math.min(8, Math.round(dist)));
+      if (!onda) {
+        try { localStorage.setItem("ovw.seguirSqm", String(dist)); } catch (e) { /* sem storage */ }
+      }
+      motor.seguir(id, onda ? 4 : dist, { onda: onda });
       atualizar();
     }));
     raiz.appendChild(seguir);
+
+    const linhaOnda = linha({ marginTop: "2px" });
+    partes.onda = document.createElement("input");
+    partes.onda.type = "checkbox";
+    partes.onda.checked = !!(window.Olivia && window.Olivia.onda && window.Olivia.onda.ligado());
+    partes.onda.addEventListener("change", function () {
+      const ligado = partes.onda.checked;
+      if (window.Olivia && window.Olivia.onda) window.Olivia.onda.definir(ligado);
+      else motor.definirOnda(ligado);
+      if (ligado) {
+        try { localStorage.setItem("ovw.seguirSqm", partes.distancia.value); } catch (e) { /* sem storage */ }
+        partes.distancia.value = "4";
+      } else {
+        let guardado = "1";
+        try { guardado = localStorage.getItem("ovw.seguirSqm") || "1"; } catch (e) { /* sem storage */ }
+        partes.distancia.value = guardado;
+      }
+      partes.distancia.disabled = ligado;
+      atualizar();
+    });
+    linhaOnda.appendChild(partes.onda);
+    linhaOnda.appendChild(el("span", null, "Seguir knight (onda 4 sqm)"));
+    raiz.appendChild(linhaOnda);
+
+    if (partes.onda.checked) {
+      partes.distancia.value = "4";
+      partes.distancia.disabled = true;
+    }
 
     const rodape = linha({ marginTop: "6px", justifyContent: "space-between" });
     partes.log = el("span", { fontSize: "10px", color: "#6f8a9c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, "");
@@ -1548,14 +2503,20 @@ function criarPainel(opcoes) {
     const modo = motor.modo();
     const alvo = motor.rota.alvo();
     const indice = Math.min(motor.rota.indice() + 1, motor.rota.total());
+    const ci = motor.rota.cacaInfo ? motor.rota.cacaInfo() : null;
+    const caca = ci && ci.ativo
+      ? " · caça " + Math.floor(ci.tempoMs / 1000) + "s (" + ci.perto + " mobs)"
+      : "";
 
     partes.estado.textContent = modo === "parada" ? "parada" : modo;
     partes.modo.textContent = modo === "rota"
       ? "rota · ponto " + indice + "/" + motor.rota.total()
         + " · volta " + motor.rota.volta()
         + (alvo ? " (" + alvo.x + "," + alvo.y + ")" : "")
+        + caca
       : modo === "seguir"
         ? "seguindo " + (motor.seguindoId() || "?")
+          + (motor.seguidor.onda() ? " · onda" : "")
         : "parada · ponto " + indice + "/" + motor.rota.total();
 
     const pausa = Math.ceil(motor.pausaRestante() / 1000);
@@ -1594,6 +2555,7 @@ function criarPainel(opcoes) {
 
   const CHAVE_ROTA = "ovw.rota.estado";
   const CHAVE_SESSAO = "ovw.sessao";
+  const CHAVE_CACA = "ovw.caca";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -1632,6 +2594,10 @@ function criarPainel(opcoes) {
 
   const motor = criarMotor({ ponte: ponte, log: registro });
 
+  // Configuração do ponto de caça (mesmos nomes do HuntSpotSettings do desktop).
+  const cacaSalvo = ler(CHAVE_CACA);
+  if (cacaSalvo) motor.rota.definirCaca(cacaSalvo);
+
   let autoTarefas = (function () {
     try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
   })();
@@ -1655,6 +2621,12 @@ function criarPainel(opcoes) {
   const area = criarArea();
   let areaAlvo = null;
   let areaMobs = 0;
+
+  // Seguir knight: fica na vaga da onda a 4 sqm e vira para o alvo.
+  let ondaLigada = (function () {
+    try { return localStorage.getItem("ovw.seguirOnda") === "1"; } catch (e) { return false; }
+  })();
+  motor.seguidor.definirOnda(ondaLigada);
 
   // Mantém a conexão viva quando o WS cai no meio do jogo (mesma ideia do AutoReconnect).
   function vigiarConexao() {
@@ -1704,7 +2676,15 @@ function criarPainel(opcoes) {
   // ---- persistência: rota, sessão e retomada automática -------------------
 
   function guardarRota() {
-    const pontos = motor.rota.pontos().map(function (p) { return [p.x, p.y, p.pausaMs]; });
+    const pontos = motor.rota.pontos().map(function (p) {
+      if (p.hunt || p.pausaMs > 0) {
+        const o = { x: p.x, y: p.y };
+        if (p.pausaMs > 0) o.pausaMs = p.pausaMs;
+        if (p.hunt) o.hunt = true;
+        return o;
+      }
+      return [p.x, p.y];
+    });
     const st = ponte.estado();
     gravar(CHAVE_ROTA, {
       pontos: pontos,
@@ -1718,10 +2698,7 @@ function criarPainel(opcoes) {
       ativa: rotaAtiva && pontos.length > 0,
     });
     try {
-      const texto = pontos.map(function (p) {
-        return p[2] > 0 ? JSON.stringify({ x: p[0], y: p[1], pausaMs: p[2] }) : "[" + p[0] + "," + p[1] + "]";
-      });
-      localStorage.setItem("ovw.rota", "[" + texto.join(",") + "]");
+      localStorage.setItem("ovw.rota", JSON.stringify(pontos));
     } catch (e) { /* sem storage */ }
   }
 
@@ -1799,7 +2776,9 @@ function criarPainel(opcoes) {
         situacao: motor.rota.situacao(),
         volta: motor.rota.volta(),
         repetir: motor.rota.repetir(),
+        caca: motor.cacaInfo(),
       },
+      caca: motor.rota.cacaConfig(),
       pausa: motor.pausaRestante(),
       sessao: motor.sessao.snapshot(),
       jogo: st,
@@ -1808,6 +2787,11 @@ function criarPainel(opcoes) {
       pausaHumana: { ligado: motor.humano.ligado() },
       reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
       area: { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs },
+      onda: {
+        ligado: ondaLigada,
+        lado: motor.seguidor.lado(),
+        distancia: motor.seguidor.distanciaOnda(),
+      },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -1985,7 +2969,39 @@ function criarPainel(opcoes) {
       const o = opcoes || {};
       return motor.iniciarRota(pontos, o.origem || "console", o);
     },
-    seguir: function (id, distancia) { return motor.seguir(id, distancia); },
+    caca: {
+      config: function () { return motor.rota.cacaConfig(); },
+      definir: function (config) {
+        const aplicado = motor.rota.definirCaca(config);
+        gravar(CHAVE_CACA, aplicado);
+        registro.evento("caca_config", aplicado);
+        publicar();
+        return aplicado;
+      },
+      padrao: function () { return Object.assign({}, CACA_PADRAO); },
+    },
+    seguir: function (id, distancia, opcoes) {
+      const o = Object.assign({}, opcoes || {});
+      if (o.onda === undefined) o.onda = ondaLigada;
+      return motor.seguir(id, distancia, o);
+    },
+    onda: {
+      ligado: function () { return ondaLigada; },
+      definir: function (v) {
+        ondaLigada = !!v;
+        try { localStorage.setItem("ovw.seguirOnda", ondaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
+        motor.definirOnda(ondaLigada);
+        publicar();
+        return ondaLigada;
+      },
+      estado: function () {
+        return {
+          ligado: ondaLigada,
+          lado: motor.seguidor.lado(),
+          distancia: motor.seguidor.distanciaOnda(),
+        };
+      },
+    },
     jogadores: function () { return ponte.jogadores(); },
     autoTarefas: {
       ligado: function () { return autoTarefas; },

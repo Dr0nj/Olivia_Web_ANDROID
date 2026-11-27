@@ -31,10 +31,12 @@ export function criarMotor(opcoes) {
   let ultimoAlvo = "";
   let pausadoAte = 0;
   let seguindoId = null;
+  let ultimoGiro = 0;
   let ultimoPersonagem = null;
   let ultimoMotivoParada = null;
   let trecho = null; // trecho atual: { destino, alvo }
   let pisoRota = null;
+  let emCaca = false;
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -75,6 +77,7 @@ export function criarMotor(opcoes) {
     const total = rota.carregar(pontos);
     if (opcoes && opcoes.repetir !== undefined) rota.repetir(opcoes.repetir);
     rota.definirAtraso(opcoes ? opcoes.atraso : null);
+    if (opcoes && opcoes.caca) rota.definirCaca(opcoes.caca);
     const st = cfg.ponte.estado ? cfg.ponte.estado() : null;
     const pos = st && st.pos ? st.pos : null;
     if (!rota.iniciar(cfg.agora(), pos)) return 0;
@@ -85,6 +88,7 @@ export function criarMotor(opcoes) {
     trecho = null;
     pisoRota = pos && Number.isInteger(pos.z) ? pos.z : null;
     ultimoMotivoParada = null;
+    emCaca = false;
     const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
@@ -94,20 +98,37 @@ export function criarMotor(opcoes) {
       proximo: alvo ? alvo.x + "," + alvo.y : "",
       maisProximo: !(opcoes && Number.isInteger(opcoes.indice)),
       atraso: rota.atrasoConfig(),
-      pontos: rota.pontos().map((p) => p.x + "," + p.y).join(";"),
+      caca: rota.cacaConfig(),
+      pontos: rota.pontos().map((p) => p.x + "," + p.y + (p.hunt ? "h" : "")).join(";"),
     });
     return total;
   }
 
-  function seguir(id, alcance) {
+  function seguir(id, alcance, opcoes) {
+    const o = opcoes || {};
     if (alcance !== undefined) seguidor.definirAlcance(alcance);
+    if (o.onda !== undefined) seguidor.definirOnda(o.onda);
     seguindoId = String(id);
     seguidor.seguir(seguindoId, cfg.agora());
     modo = "seguir";
     ultimoAlvo = "";
     trecho = null;
-    registro.evento("seguir_inicio", { alvo: seguindoId, sqm: seguidor.alcance() });
+    ultimoGiro = 0;
+    registro.evento("seguir_inicio", {
+      alvo: seguindoId,
+      sqm: seguidor.alcanceEfetivo(),
+      onda: seguidor.onda(),
+    });
     return true;
+  }
+
+  function definirOnda(ligado) {
+    const estado = seguidor.definirOnda(ligado);
+    ultimoAlvo = "";
+    trecho = null;
+    ultimoGiro = 0;
+    registro.evento("seguir_onda", { ligado: estado, sqm: seguidor.alcanceEfetivo() });
+    return estado;
   }
 
   function parar(motivo) {
@@ -117,7 +138,9 @@ export function criarMotor(opcoes) {
     seguindoId = null;
     ultimoAlvo = "";
     trecho = null;
+    ultimoGiro = 0;
     pisoRota = null;
+    emCaca = false;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
     sessao.parada();
@@ -167,8 +190,39 @@ export function criarMotor(opcoes) {
         }
       }
 
-      const d = rota.passo({ pos: st.pos, agora: agora });
+      const mobs = cfg.ponte.monstros ? cfg.ponte.monstros() : [];
+      const manaPct = st.mana != null && st.manaMax
+        ? (st.mana / st.manaMax) * 100
+        : null;
+      const d = rota.passo({ pos: st.pos, agora: agora, mobs: mobs, manaPct: manaPct });
       if (!d) return;
+
+      // Ponto de caça: para o personagem e fica segurando até a rota mandar sair.
+      if (d.acao === "cacar") {
+        if (!emCaca) {
+          emCaca = true;
+          ultimoAlvo = "";
+          trecho = null;
+          cfg.ponte.enviar({ t: "parar" });
+          registro.evento("caca_inicio", {
+            emPonto: !!d.emPonto,
+            motivo: d.motivo,
+            perto: d.perto,
+            pos: st.pos,
+          });
+        }
+        return;
+      }
+      if (emCaca) {
+        emCaca = false;
+        registro.evento("caca_fim", {
+          motivo: d.cacaMotivo || d.motivo || "",
+          emPonto: !!d.emPonto,
+          tempoMs: d.tempoMs,
+          perto: d.perto,
+          pos: st.pos,
+        });
+      }
 
       if (d.acao === "ir" && cfg.ponte.caminavel && !cfg.ponte.caminavel(d.x, d.y)) {
         const r = rota.pularAtual(agora);
@@ -224,11 +278,27 @@ export function criarMotor(opcoes) {
 
     if (modo === "seguir") {
       const alvo = cfg.ponte.entidade(seguindoId);
-      const d = seguidor.passo({ alvo: alvo, pos: st.pos, agora: agora });
+      const mobs = cfg.ponte.monstros ? cfg.ponte.monstros() : [];
+      const d = seguidor.passo({
+        alvo: alvo,
+        pos: st.pos,
+        agora: agora,
+        mobs: mobs,
+        caminavel: cfg.ponte.caminavel,
+      });
       if (!d) return;
       if (d.acao === "ir") {
         const alvo = proximoTrecho({ x: d.x, y: d.y }, st.pos);
         enviarIr(alvo.x, alvo.y, false);
+        return;
+      }
+      if (d.acao === "esperar" && Number.isInteger(d.face)) {
+        // Na vaga da onda: vira para o alvo para o feixe atravessar o 3x3.
+        // `pc` só gira; repete devagar porque o cliente não informa a direção atual.
+        if (agora - ultimoGiro >= 1200) {
+          ultimoGiro = agora;
+          if (cfg.ponte.girar) cfg.ponte.girar(d.face);
+        }
         return;
       }
       if (d.acao === "passo") {
@@ -274,12 +344,14 @@ export function criarMotor(opcoes) {
     tick,
     iniciarRota,
     seguir,
+    definirOnda,
     parar,
     modo: () => modo,
     pausadoAte: () => pausadoAte,
     pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
     ultimoMotivo: () => ultimoMotivoParada,
     rota,
+    cacaInfo: () => rota.cacaInfo(cfg.agora()),
     seguidor,
     sessao,
     humano,

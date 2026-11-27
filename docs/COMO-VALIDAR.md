@@ -64,6 +64,13 @@ Em **⚙**:
 **Seguir jogador** (página): lista os jogadores por perto com id e distância; escolha um,
 defina a **distância em sqm** (0 = mesmo tile) e toque em **Seguir**. **Parar** encerra.
 
+**Seguir knight (onda)**: marque o checkbox na mesma página. A distância vira **4 sqm** e
+o Olivia fica na vaga da onda, com o knight no centro do 3x3. Para conferir: o log mostra
+`seguir_onda`; ao chegar, o estado fica `seguindo <id> · onda` e o cliente recebe
+`{t:"pc",k:"xd",d:{a:...}}` uma vez a cada ~1,2 s. Com monstros em volta do knight, o
+lado escolhido deve apontar o feixe para o bando; o log `area_alvo` continua sendo do
+Hunt Assist, não deste modo. Desmarque para voltar ao seguir normal.
+
 Pelo PC, com o WebView depurável (já habilitado):
 
 ```powershell
@@ -92,7 +99,11 @@ visível e jogável). Para voltar, **Voltar**.
 2. O contador no topo mostra quantos pontos já tem; o campo mostra o JSON (`[x,y]`).
 3. O último ponto deve ficar perto do primeiro para a volta fechar; para pausa num ponto,
    edite-o como `{"x":123,"y":96,"pausaMs":5000}`.
-4. **Iniciar** volta ao hub e começa a andar em trechos de até 6 tiles (o servidor ignora
+4. Para **ponto de caça**, toque em **Ponto de caça** (marca o sqm atual) ou edite como
+   `{"x":123,"y":96,"hunt":true}`. Em **Caça…** ajuste raio livre, mínimo, teto, mana,
+   “sair com” monstros e trem. Ao chegar, o personagem para e só sai depois de limpar
+   (ou do teto), sem pular o waypoint.
+5. **Iniciar** volta ao hub e começa a andar em trechos de até 6 tiles (o servidor ignora
    `ir` a mais de 8). Ao chegar no último ponto, começa a volta de novo (`volta` sobe).
 
 **Guardar e escolher rotas**
@@ -116,6 +127,10 @@ waypoint e `voltas` a cada laço.
 - Se **todos** falharem: `rota_sem_caminho`, espera 5 s e recomeça a volta (até 12 vezes).
 - Se o personagem **mudar de piso** no meio, para (`rota_piso_mudou`) — `ir` não sobe escada.
 - Volta concluída limpa os pulados e tenta todos de novo.
+- **Ponto de caça** (`hunt`) exige o sqm exato, para (`parar`) e segura até o raio ficar
+  livre/mana ok, confirma 1,5–3 s e respeita mínimo/teto. Log: `caca_inicio`/`caca_fim`.
+- **Trecho de caça** travado espera no lugar (até 4 vezes) em vez de pular; **trem**
+  (N+ monstros a até 4 sqm por 1,5 s) também caça no lugar.
 
 **Atraso entre waypoints**
 

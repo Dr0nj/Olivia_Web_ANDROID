@@ -1,15 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.1
+**Versão:** 0.9.2
 **Data:** 2026-11-27
-**Commit:** `e17460d`
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.1
-**APK:** `android/app/build/olivia-web.apk` (109 KB; cópia em
-`C:\Users\Dron\Downloads\olivia-web.apk`)
+**Commit:** `e17460d` + ponto de caça
+**Release:** pendente da 0.9.2
+**APK:** `android/app/build/olivia-web.apk` (125 KB)
 
 ## Validado
 
-- **68 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **101 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -29,8 +28,34 @@
 3. **Configurações**: `ScrollView` com altura limitada; o novo checkbox de área fez o
    Voltar sair da tela e isso foi corrigido.
 
+## Mudanças da 0.9.2
+
+1. **Ponto de caça**: porta do `HuntSpotSettings` + `LongRouteSession` do desktop.
+   Waypoint marcado (`hunt`) exige o sqm exato, para, segura até sobrar até N monstros
+   no raio e a mana mínima, confirma por 1,5–3 s, respeita mínimo/teto e sai sem pular.
+2. **Trecho de caça**: caminho travado depois do ponto espera abrir no lugar (até 4
+   esperas). **Trem**: N+ monstros a até 4 sqm e preso 1,5 s caça no lugar sem pular.
+3. **UI**: botão **Ponto de caça** e dialog **Caça…** no APK; marcação/config no painel
+   da página. Configuração fica em `ovw.caca` / prefs `caca*`.
+
+## Seguir knight (onda)
+
+- Checkbox **Seguir knight (onda 4 sqm)** na tela **Seguir jogador** do APK e no painel da
+  página. Fica ligado/desligado na hora, sem reiniciar o seguir.
+- Posição fixa a **4 sqm** do alvo, na mesma linha/coluna: o knight fica no centro do 3x3
+  da área real `1,1,3,3,3`; os dois sqm retos ficam atrás dele, entre o knight e o Olivia.
+- O lado é escolhido pela última direção do knight (fica atrás) e pelos monstros que o
+  feixe acerta; troca com **+2 monstros** de vantagem, no máximo 1x/s.
+- Ao chegar na vaga, vira para o alvo com `{t:"pc",k:"xd",d:{a}}` (a mesma tecla
+  Ctrl+seta do cliente). A vaga bloqueada em `mapa.caminable` é descartada.
+- Código: `driver/src/onda.js` (geometria + escolha), `seguidor.js` (modo), `motor.js`
+  (giro), `ponte.js` (`girar`) e os dois painéis. Testes: `onda.test.mjs`,
+  `seguidor.test.mjs`, `motor.test.mjs` e integração do bundle.
+- **Não dispara magia.** O Hunt Assist/Energy Surge continua sendo quem ataca.
+
 ## Pendências
 
+- Validar o **ponto de caça** em hunt real: chegada exata, limpeza, mana, teto e trem.
 - Validar a escolha de alvo da **área** em um hunt real (log `area_alvo`).
 - Testar no **celular** do usuário.
 - Testar a **reconexão** com uma queda real de WebSocket.

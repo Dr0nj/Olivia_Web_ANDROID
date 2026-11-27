@@ -6,9 +6,11 @@ function cenario(inicial, opcoes) {
   let pos = Object.assign({}, inicial);
   let agora = 0;
   let alvo = null;
+  let mobs = [];
+  const cfg = opcoes || {};
+  let mana = cfg.mana == null ? 100 : cfg.mana;
   const enviados = [];
   const eventos = [];
-  const cfg = opcoes || {};
   const ponte = {
     enviados,
     estado: () => ({
@@ -18,9 +20,13 @@ function cenario(inicial, opcoes) {
       pos: Object.assign({}, pos),
       xp: 0,
       vida: 100,
+      mana: mana,
+      manaMax: 100,
     }),
     enviar: (m) => { enviados.push(m); return true; },
+    girar: (face) => { enviados.push({ t: "pc", k: "xd", d: { a: face } }); return true; },
     entidade: () => alvo,
+    monstros: () => mobs,
   };
   if (cfg.caminavel) ponte.caminavel = cfg.caminavel;
   const motor = criarMotor({
@@ -35,6 +41,8 @@ function cenario(inicial, opcoes) {
     mover(x, y, z) { pos = { x, y, z: z == null ? pos.z : z }; },
     passar(ms) { agora += ms; },
     definirAlvo(a) { alvo = a; },
+    definirMobs(lista) { mobs = lista; },
+    definirMana(pct) { mana = pct; },
   };
 }
 
@@ -138,6 +146,31 @@ test("seguidor também anda em trechos curtos", () => {
   assert.equal(primeiro.x, 0);
 });
 
+test("ponto de caça para o personagem e só anda depois de limpar", () => {
+  const c = cenario({ x: 10, y: 10, z: 0 });
+  c.motor.iniciarRota([{ x: 10, y: 10, hunt: true }, [12, 10]], "teste", {
+    caca: { raioLimpo: 2, minParadoMs: 0, tetoMs: 30000, manaMinPct: 0, sairComMobs: 0, tremMobs: 0 },
+  });
+
+  c.motor.tick();
+  assert.ok(c.eventos.some((e) => e.nome === "caca_inicio"), "não registrou o início da caça");
+  assert.ok(c.enviados.some((m) => m.t === "parar"), "não parou ao chegar no ponto");
+  assert.equal(c.enviados.filter((m) => m.t === "ir").length, 0, "andou durante a caça");
+
+  c.passar(600);
+  c.motor.tick();
+  assert.equal(c.enviados.filter((m) => m.t === "ir").length, 0, "andou durante a confirmação");
+
+  // 4,5 s parado: passou o teto de confirmação (1,5–3 s) e sai.
+  c.passar(4500);
+  c.motor.tick();
+  assert.ok(c.eventos.some((e) => e.nome === "caca_fim"), "não registrou o fim da caça");
+
+  c.passar(300);
+  c.motor.tick();
+  assert.ok(c.enviados.some((m) => m.t === "ir" && m.x === 12 && m.y === 10), "não seguiu depois de limpar");
+});
+
 test("pausa humana não interrompe o seguir", () => {
   const c = cenario({ x: 0, y: 0, z: 0 });
   c.definirAlvo({ x: 0, y: 20, nome: "Alvo", id: 7 });
@@ -145,4 +178,37 @@ test("pausa humana não interrompe o seguir", () => {
   c.motor.seguir(7);
   c.motor.tick();
   assert.ok(c.enviados.some((m) => m.t === "ir"), "pausou o seguidor");
+});
+
+test("seguir knight manda ir para a vaga e gira para o alvo", () => {
+  const c = cenario({ x: 0, y: 10, z: 0 });
+  c.definirAlvo({ x: 10, y: 10, nome: "Knight", id: 7 });
+  c.motor.seguir(7, 4, { onda: true });
+
+  c.motor.tick();
+  assert.deepEqual(c.enviados.at(-1), { t: "ir", x: 6, y: 10 });
+
+  c.mover(6, 10);
+  c.passar(1300);
+  c.motor.tick();
+  assert.deepEqual(c.enviados.at(-1), { t: "pc", k: "xd", d: { a: 3 } });
+
+  // Segunda passada: não repete o giro antes de 1,2 s.
+  const antes = c.enviados.length;
+  c.passar(300);
+  c.motor.tick();
+  assert.equal(c.enviados.length, antes);
+});
+
+test("definirOnda liga e desliga o seguir knight no motor", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 });
+  c.definirAlvo({ x: 10, y: 10, nome: "Knight", id: 7 });
+  c.motor.seguir(7, 1, { onda: false });
+
+  c.motor.tick();
+  assert.deepEqual(c.enviados.at(-1), { t: "ir", x: 6, y: 6 });
+
+  c.motor.definirOnda(true);
+  c.motor.tick();
+  assert.deepEqual(c.enviados.at(-1), { t: "ir", x: 4, y: 6 });
 });

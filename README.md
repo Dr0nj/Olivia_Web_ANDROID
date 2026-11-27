@@ -41,6 +41,17 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   reinjeção (mesmo piso e mesmo personagem). **Rota** troca o hub por uma tela de rota no
   próprio painel: **Marcar aqui** enquanto anda, **Desfazer**, **Salvar…**, **Abrir…**
   (lista de rotas nomeadas), **Limpar**, **Iniciar** e **Voltar**.
+- **Ponto de caça** (mesmas regras do `HuntSpotSettings`/`LongRouteSession` do desktop):
+  - marque um waypoint como **Ponto de caça** (objeto `{x,y,hunt:true}` ou `[x,y,"h"]`);
+  - ao chegar, **pisa no sqm exato**, para e segura até sobrar até **“sair com”** monstros
+    no raio configurado, com a **mana mínima**; depois espera 1,5–3 s para confirmar;
+  - respeita o **mínimo parado** e o **teto de segurança** (sai mesmo sem limpar);
+  - ao sair, o trecho até o próximo waypoint é **trecho de caça**: caminho travado
+    **espera abrir no lugar** em vez de pular (até 4 esperas);
+  - **trem**: andando com N+ monstros a até 4 sqm e preso por 1,5 s, caça no lugar sem
+    pular o waypoint (0 = desligado);
+  - configuração em **Caça…** (APK) ou **Ponto de caça** (modo página): livre em sqm,
+    mínimo, teto, mana, sair com N monstros e trem.
 - **Navegação** (regras trazidas do desktop):
   - ao **Iniciar**, começa pelo waypoint **mais próximo** da posição atual, não pelo ponto 0;
   - chegada exata; se parar a 1 tile e ficar parado ~0,6 s, conta como chegado;
@@ -59,6 +70,12 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   jogador, então o último sqm é feito com `{t:"dir"}` (o mesmo passo do joystick), um passo
   curto de cada vez, soltando com `parar` antes do tile seguinte. Testado ao vivo: o
   personagem ficou exatamente em cima do alvo (`85,105` = `85,105`).
+- **Seguir knight (onda)**: checkbox no seguir. Em vez de ir até o alvo, fica **4 sqm**
+  dele na mesma linha/coluna, com o knight no **centro do 3x3** da onda (`1,1,3,3,3`).
+  Escolhe o lado pela última direção do knight (fica atrás) e pelos monstros que o feixe
+  acerta; troca de lado com **+2 monstros** de vantagem e vira para o alvo com
+  `{t:"pc",k:"xd"}`. Só posiciona: **não dispara magia**. Liga/desliga sem reiniciar o
+  seguir e a escolha é refeita no máximo 1x/s.
 - **Sessão**: “sessão atual” (tempo), xp/h (XP absoluto, sem ficar negativo ao subir de
   nível), pontos, voltas, mortes, paradas, desafios respondidos/janelas. **Resetar sessão**
   zera os contadores.
@@ -75,8 +92,8 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **Humanização**: pausas longas de 8–20 s a cada 15–25 min (o seguidor não pausa).
 - **Configurações (⚙ no cabeçalho)**: tela separada com os interruptores **Responder
   «Não»**, **Repetir a rota (laço)**, **Repetir tasks e aceitar missões**, **Pausas
-  humanas**, **Reconectar automaticamente**, **Atraso entre waypoints…** (exato/aleatório)
-  e **Otimizar ataque em área**. **Voltar** retorna ao hub.
+  humanas**, **Reconectar automaticamente**, **Atraso entre waypoints…** (exato/aleatório),
+  **Caça…** (ponto de caça) e **Otimizar ataque em área**. **Voltar** retorna ao hub.
 - **Reconexão**: se o WebSocket cair em jogo, tenta `Red.conectar()` a cada 15 s e conta
   tentativas/sucessos (mesma ideia do AutoReconnect do desktop).
 - **Ataque em área**: **Otimizar ataque em área** (checkbox em ⚙) é a mesma lógica do
@@ -116,15 +133,17 @@ android/                      concha Android (Java puro, sem Gradle)
 driver/src/                   motor JS
   index.js                    entrada, persistência, retomada, ponte com o painel
   motor.js                    laço único (rota, seguidor, pausas, trechos de 6 tiles)
-  rota.js                     waypoints, chegada, timeout, voltas
-  seguidor.js                 seguir jogador
+  rota.js                     waypoints, chegada, timeout, voltas, ponto de caça
+  caca.js                     regras do ponto de caça (HuntSpotSettings do desktop)
+  onda.js                     seguir knight: área 1,1,3,3,3 e escolha da vaga
+  seguidor.js                 seguir jogador / seguir knight
   sessao.js                   contadores por sessão
   humano.js                   pausas longas
   suprimentos.js              consumo de poções
   antibot.js                  resposta “Não” + contadores
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 45 testes (node --test)
+driver/tests/                 101 testes (node --test)
 src/olivia-web.user.js        protótipo antigo (só anti-bot), superado por driver/ + dist/
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -139,13 +158,13 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 45 testes
+node --test driver\tests                 # 101 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 
 Requisitos do APK: JDK do Android Studio (`JAVA_HOME=...\Android Studio\jbr`),
 `build-tools 36.1.0` e `platforms/android-36`. O APK sai em
-`android/app/build/olivia-web.apk` (~53 KB), `minSdk 26`, `targetSdk 36`.
+`android/app/build/olivia-web.apk` (~125 KB), `minSdk 26`, `targetSdk 36`.
 
 ## Testar
 

@@ -5,17 +5,20 @@ export function criarSeguidor(opcoes) {
   let alvoId = null;
   let vistoEm = 0;
   let situacao = "parada"; // parada | seguindo | perdeu
+  let passoEm = 0;
 
   function seguir(id, agora) {
     alvoId = String(id);
     vistoEm = agora;
     situacao = "seguindo";
+    passoEm = 0;
     return true;
   }
 
   function parar() {
     alvoId = null;
     situacao = "parada";
+    passoEm = 0;
   }
 
   function definirAlcance(v) {
@@ -38,7 +41,23 @@ export function criarSeguidor(opcoes) {
     if (alvo && Number.isFinite(alvo.x) && Number.isFinite(alvo.y)) {
       vistoEm = agora;
       if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
-      if (distancia(pos, alvo) <= cfg.alcance) return { acao: "esperar", motivo: "colado" };
+      const dist = distancia(pos, alvo);
+      if (dist <= cfg.alcance) return { acao: "esperar", motivo: "colado" };
+
+      // Distância 0 = no MESMO tile do alvo. O `ir` do servidor não entra no tile
+      // ocupado por outro jogador (testado ao vivo), então o último sqm é por `dir`
+      // (o mesmo passo do joystick/teclado), um passo curto de cada vez.
+      if (cfg.alcance === 0 && dist === 1) {
+        if (passoEm !== 0 && agora - passoEm < 650) return { acao: "esperar", motivo: "subindo" };
+        passoEm = agora;
+        return {
+          acao: "passo",
+          dx: Math.sign(alvo.x - pos.x),
+          dy: Math.sign(alvo.y - pos.y),
+          alvo: alvoId,
+        };
+      }
+
       return { acao: "ir", x: alvo.x, y: alvo.y, alvo: alvoId };
     }
 

@@ -10,6 +10,7 @@ const ordem = [
   "humano",
   "rota",
   "seguidor",
+  "area",
   "suprimentos",
   "antibot",
   "ponte",

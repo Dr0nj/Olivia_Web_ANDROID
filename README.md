@@ -51,6 +51,10 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **Seguidor (Seguir jogador)**: página própria com a lista dos jogadores por perto
   (nome, id e distância) e a **distância em sqm** (0 = mesmo tile, até 8). O personagem
   acompanha o alvo e para na distância escolhida; desiste se o alvo sumir por 5 s.
+  **Distância 0 sobe no mesmo tile**: o `ir` do servidor não entra no piso ocupado por outro
+  jogador, então o último sqm é feito com `{t:"dir"}` (o mesmo passo do joystick), um passo
+  curto de cada vez, soltando com `parar` antes do tile seguinte. Testado ao vivo: o
+  personagem ficou exatamente em cima do alvo (`85,105` = `85,105`).
 - **Sessão**: “sessão atual” (tempo), xp/h (XP absoluto, sem ficar negativo ao subir de
   nível), pontos, voltas, mortes, paradas, desafios respondidos/janelas. **Resetar sessão**
   zera os contadores.
@@ -71,9 +75,14 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   e **Otimizar ataque em área**. **Voltar** retorna ao hub.
 - **Reconexão**: se o WebSocket cair em jogo, tenta `Red.conectar()` a cada 15 s e conta
   tentativas/sucessos (mesma ideia do AutoReconnect do desktop).
-- **Ataque em área**: **Otimizar** liga o Hunt Assist em modo **“mais juntos”** com alvo
-  próximo, preservando as skills — a mesma lógica do `AreaAttack` do desktop (escolher o
-  alvo cujo círculo cobre mais monstros, sem trocar por 1).
+- **Ataque em área**: **Otimizar ataque em área** (checkbox em ⚙) é a mesma lógica do
+  `AreaAttack` do desktop: o círculo de **5 sqm (raio 2,5)** é medido em volta de cada
+  monstro candidato, não do personagem. Escolhe o alvo que cobre mais monstros, só considera
+  alvos na janela **7×5** que o jogo segura, exige **+2 monstros** para trocar e **segura o
+  alvo por 3 s**; empate não troca. O alvo é aplicado pelo próprio cliente
+  (`Pelea.poner`/`{t:"objetivo",monstruo:id}`) e o auto-alvo do Hunt Assist fica desligado
+  (`cerca=false`) para não sobrescrever a escolha. As skills/poções do Hunt Assist seguem
+  intactas.
 - **Recolher (≡)**: minimizado fica só **“Olivia ≡”** numa pílula no canto; tocar de novo
   restaura o painel completo (252 dp na lateral).
 - **Arrastar**: segure a faixa do cabeçalho (onde está “Olivia”) e arraste para qualquer

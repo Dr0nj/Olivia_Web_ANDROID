@@ -188,3 +188,21 @@ Resultado: `Olivia.sessao.snapshot().antiBot` = 1, `janelas` = 1, log `antibot_r
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).
+
+## 17. Ajustes 0.9.1 (seguir 0 e área)
+
+- **Seguir 0 = em cima**: o `ir` do servidor não entra no tile ocupado por outro jogador
+  (testado: `{t:"ir"}` para o tile do Javi não moveu). O último sqm passou a ser `{t:"dir"}`
+  (o passo do joystick), um passo por vez, soltando com `parar` em 240 ms. Ao vivo: de
+  (90,105) para (85,105), exatamente o tile do Javi; `q` continuou **16**.
+- **Área com o círculo da skill**: `driver/src/area.js` porta o `AreaAttack` do desktop
+  (raio 2,5 = diâmetro 5, centrado no alvo; janela 7x5; +2 monstros para trocar; 3 s de
+  espera). Oito testes novos cobrem contagem no círculo, empate, janela e histerese. O alvo
+  é aplicado por `Pelea.poner`/`objetivo` e o auto-alvo do Hunt Assist fica
+  `cerca=false`; as skills continuam as do Hunt Assist. No emulador o checkbox ligou e
+  desligou, `Asistente.aa` ficou `{on:true,cerca:false,modo:2}` e `q` seguiu **16**.
+- **Configurações roláveis**: o conteúdo cresceu e o **Voltar** saía da tela; o corpo agora
+  é um `ScrollView` com altura limitada. Testado com swipe: **Voltar** apareceu em
+  `[1650,967][1777,1023]`.
+- **Pendente ao vivo**: escolha de alvo em área com monstros reais (o mapa estava sem
+  monstros no momento do teste); a lógica pura está coberta pelos testes.

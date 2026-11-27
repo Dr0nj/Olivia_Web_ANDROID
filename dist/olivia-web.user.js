@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.0
+// @version      0.9.1
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -537,17 +537,20 @@ function criarSeguidor(opcoes) {
   let alvoId = null;
   let vistoEm = 0;
   let situacao = "parada"; // parada | seguindo | perdeu
+  let passoEm = 0;
 
   function seguir(id, agora) {
     alvoId = String(id);
     vistoEm = agora;
     situacao = "seguindo";
+    passoEm = 0;
     return true;
   }
 
   function parar() {
     alvoId = null;
     situacao = "parada";
+    passoEm = 0;
   }
 
   function definirAlcance(v) {
@@ -570,7 +573,23 @@ function criarSeguidor(opcoes) {
     if (alvo && Number.isFinite(alvo.x) && Number.isFinite(alvo.y)) {
       vistoEm = agora;
       if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
-      if (distancia(pos, alvo) <= cfg.alcance) return { acao: "esperar", motivo: "colado" };
+      const dist = distancia(pos, alvo);
+      if (dist <= cfg.alcance) return { acao: "esperar", motivo: "colado" };
+
+      // Distância 0 = no MESMO tile do alvo. O `ir` do servidor não entra no tile
+      // ocupado por outro jogador (testado ao vivo), então o último sqm é por `dir`
+      // (o mesmo passo do joystick/teclado), um passo curto de cada vez.
+      if (cfg.alcance === 0 && dist === 1) {
+        if (passoEm !== 0 && agora - passoEm < 650) return { acao: "esperar", motivo: "subindo" };
+        passoEm = agora;
+        return {
+          acao: "passo",
+          dx: Math.sign(alvo.x - pos.x),
+          dy: Math.sign(alvo.y - pos.y),
+          alvo: alvoId,
+        };
+      }
+
       return { acao: "ir", x: alvo.x, y: alvo.y, alvo: alvoId };
     }
 
@@ -589,6 +608,112 @@ function criarSeguidor(opcoes) {
     alcance: () => cfg.alcance,
     alvo: () => alvoId,
     situacao: () => situacao,
+  };
+}
+
+
+// Escolha de alvo para ataque em área: a mesma ideia do AreaAttack do desktop.
+//
+// O círculo de 5 SQM (raio 2,5) é a área válida da magia, centrada no ALVO, não no
+// personagem. Dá para ficar mais longe que esse círculo. O jogo, porém, só segura um
+// alvo dentro de 7 SQM na horizontal e 5 na vertical; fora disso o auto-alvo dele
+// desfaz a troca. A lógica é pura: não chama nada do jogo.
+const RAIO = 2.5;
+const KEEP_X = 7;
+const KEEP_Y = 5;
+// Ganho mínimo para trocar: com +1 os monstros andando faziam trocar a cada 0,6 s.
+const GANHO_MIN = 2;
+// Depois de uma troca, segura o alvo escolhido por esse tempo antes de reavaliar.
+const HOLD_MS = 3000;
+
+function distancia(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** Pontua todos os monstros conhecidos, do melhor para o pior.
+ *  O círculo é sempre em volta do candidato, mesmo que ele esteja longe do personagem. */
+function pontuar(jogador, monstros) {
+  const lista = (Array.isArray(monstros) ? monstros : []).filter(function (m) {
+    return m && Number.isFinite(m.x) && Number.isFinite(m.y);
+  });
+  const pontos = [];
+  for (const candidato of lista) {
+    let count = 0;
+    for (const outro of lista) {
+      if (distancia(candidato, outro) <= RAIO) count += 1;
+    }
+    pontos.push({
+      id: candidato.id,
+      count: count,
+      distance: jogador ? distancia(jogador, candidato) : 0,
+    });
+  }
+  pontos.sort(function (a, b) {
+    if (b.count !== a.count) return b.count - a.count;
+    if (a.distance !== b.distance) return a.distance - b.distance;
+    return a.id - b.id;
+  });
+  return pontos;
+}
+
+/** O jogo mantém o alvo nesta janela 7x5 a partir do personagem. */
+function mantem(jogador, monstros, id) {
+  if (!jogador) return false;
+  const alvo = (Array.isArray(monstros) ? monstros : []).find(function (m) {
+    return m && m.id === id;
+  });
+  if (!alvo) return false;
+  return Math.abs(alvo.x - jogador.x) <= KEEP_X && Math.abs(alvo.y - jogador.y) <= KEEP_Y;
+}
+
+/** Melhor alvo que o jogo vai segurar, ou null se não melhora o atual.
+ *  Empate de contagem não troca. Alvo fora da janela 7x5 não é candidato: o jogo
+ *  colocaria outro no lugar. Vizinhos fora da janela ainda contam no círculo. */
+function escolher(jogador, monstros, atualId) {
+  if (!jogador) return null;
+  const pontos = pontuar(jogador, monstros);
+  if (!pontos.length) return null;
+  const atual = atualId == null ? null : pontos.find(function (p) { return p.id === atualId; }) || null;
+  const melhor = pontos.find(function (p) { return mantem(jogador, monstros, p.id); }) || null;
+  if (!melhor) return null;
+  if (atual && melhor.count < atual.count + GANHO_MIN) return null;
+  return melhor;
+}
+
+/** Controlador com histerese: troca no máximo uma vez a cada HOLD_MS. */
+function criarArea(opcoes) {
+  const cfg = Object.assign({ agora: () => Date.now(), holdMs: HOLD_MS }, opcoes || {});
+  let alvo = null;
+  let trocadoEm = 0;
+
+  function passo(jogador, monstros, atualId, agora) {
+    const quando = Number.isFinite(agora) ? agora : cfg.agora();
+    if (atualId == null) {
+      alvo = null;
+    } else {
+      alvo = atualId;
+      if (trocadoEm !== 0 && quando - trocadoEm < cfg.holdMs) return null;
+    }
+    const escolha = escolher(jogador, monstros, alvo);
+    if (!escolha) return null;
+    if (escolha.id === alvo) return null;
+    alvo = escolha.id;
+    trocadoEm = quando;
+    return escolha;
+  }
+
+  function reset() {
+    alvo = null;
+    trocadoEm = 0;
+  }
+
+  return {
+    passo,
+    reset,
+    alvo: () => alvo,
+    segurando: (agora) => trocadoEm !== 0 && (Number.isFinite(agora) ? agora : cfg.agora()) - trocadoEm < cfg.holdMs,
   };
 }
 
@@ -723,6 +848,7 @@ function criarPonteNavegador() {
       J: window.J,
       Hud: window.Hud,
       EresBot: window.EresBot,
+      Pelea: window.Pelea,
     };
   }
 
@@ -818,6 +944,50 @@ function criarPonteNavegador() {
     return w.Red.enviar(msg) !== false;
   }
 
+  // Monstros vivos visíveis (entidades "m..."), para a escolha de alvo em área.
+  function monstros() {
+    const w = cru();
+    const j = w.J;
+    if (!j || !j.ents || typeof j.ents[Symbol.iterator] !== "function") return [];
+    const eu = minhaEntidade();
+    const lista = [];
+    for (const [chave, e] of j.ents) {
+      if (!chave || chave[0] !== "m") continue;
+      const id = Number(chave.slice(1));
+      if (!Number.isFinite(id)) continue;
+      if (!e || e.muerto || !Number.isFinite(e.x) || !Number.isFinite(e.y)) continue;
+      if (eu) {
+        if (eu.mundo != null && e.mundo != null && e.mundo !== eu.mundo) continue;
+        if (eu.piso != null && e.piso != null && e.piso !== eu.piso) continue;
+      }
+      lista.push({ id: id, x: e.x, y: e.y });
+    }
+    return lista;
+  }
+
+  // Alvo atual do cliente quando é monstro (a UI guarda em `Pelea.obj`).
+  function objetivo() {
+    const w = cru();
+    const p = w.Pelea;
+    if (!p || !p.obj || p.obj.tipo !== "m") return null;
+    const id = Number(p.obj.id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+
+  // Mesmo caminho da interface (`Pelea.poner`); cai para o envio direto se mudar.
+  function mirar(id) {
+    const w = cru();
+    try {
+      if (w.Pelea && typeof w.Pelea.poner === "function") {
+        w.Pelea.poner("m", id, true);
+        return true;
+      }
+    } catch (e) {
+      // sem Pelea: manda a mesma mensagem
+    }
+    return enviar({ t: "objetivo", monstruo: id });
+  }
+
   function aoReceber(tipo, fn) {
     const w = cru();
     if (!w.Red || typeof w.Red.al !== "function") return false;
@@ -894,7 +1064,7 @@ function criarPonteNavegador() {
 
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, caminavel,
+    inventario, suprimentos, caminavel, monstros, objetivo, mirar,
   };
 }
 
@@ -1124,6 +1294,17 @@ function criarMotor(opcoes) {
       if (d.acao === "ir") {
         const alvo = proximoTrecho({ x: d.x, y: d.y }, st.pos);
         enviarIr(alvo.x, alvo.y, false);
+        return;
+      }
+      if (d.acao === "passo") {
+        // Último sqm no mesmo tile: `ir` não entra no piso do jogador, `dir` entra.
+        // Um passo por vez: solta a direção antes do próximo tile para não ultrapassar.
+        trecho = null;
+        ultimoAlvo = "";
+        cfg.ponte.enviar({ t: "dir", dx: d.dx, dy: d.dy });
+        setTimeout(function () {
+          if (modo === "seguir") cfg.ponte.enviar({ t: "parar" });
+        }, 240);
         return;
       }
       if (d.acao === "perdeu") {
@@ -1468,6 +1649,13 @@ function criarPainel(opcoes) {
   let ultimaReconexao = 0;
   let wsEstavaAberto = false;
 
+  let areaLigada = (function () {
+    try { return localStorage.getItem("ovw.area") === "1"; } catch (e) { return false; }
+  })();
+  const area = criarArea();
+  let areaAlvo = null;
+  let areaMobs = 0;
+
   // Mantém a conexão viva quando o WS cai no meio do jogo (mesma ideia do AutoReconnect).
   function vigiarConexao() {
     if (!reconexaoLigada) return;
@@ -1619,6 +1807,7 @@ function criarPainel(opcoes) {
       autoTarefas: { ligado: autoTarefas },
       pausaHumana: { ligado: motor.humano.ligado() },
       reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
+      area: { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -1664,8 +1853,8 @@ function criarPainel(opcoes) {
     registro.evento("bonus_aceito", { id: m.id });
   }
 
-  // Hunt Assist: "mais juntos" + alvo próximo = mesma ideia do AreaAttack do desktop
-  // (escolhe o alvo cujo círculo cobre mais monstros, sem trocar por 1).
+  // A escolha de alvo é NOSSA (círculo de 5 SQM centrado no alvo). Desligamos o
+  // "escolher alvo sozinho" do Hunt Assist para ele não sobrescrever a escolha.
   function otimizarArea(segundaTentativa) {
     const a = window.Asistente;
     if (!a) {
@@ -1682,8 +1871,8 @@ function criarPainel(opcoes) {
     }
     try {
       a.aa.on = true;
-      a.aa.cerca = true;
-      a.aa.modo = 2; // 2 = mais juntos
+      a.aa.cerca = false; // alvo vem do Olivia (AreaAttack local)
+      a.aa.modo = 2; // 2 = mais juntos (mantém a compatibilidade)
       if (typeof a.mandarAA === "function") {
         a.mandarAA();
       } else {
@@ -1697,11 +1886,35 @@ function criarPainel(opcoes) {
             (c.runa || 0) + ":" + (c.on ? 1 : 0) + ";" + (a.aa.recta ? 1 : 0),
         });
       }
-      registro.evento("area_otimizada", { modo: 2, cerca: true });
+      registro.evento("area_otimizada", { modo: 2, cerca: false, raio: 2.5 });
       return true;
     } catch (e) {
       registro.evento("area_erro", { erro: String(e) });
       return false;
+    }
+  }
+
+  // A cada 700 ms reavalia o alvo com o círculo de raio 2,5 (diâmetro 5) e a
+  // histerese do desktop: +2 monstros para trocar e 3 s segurando o escolhido.
+  function passoArea() {
+    if (!areaLigada || !ponte.pronto()) return;
+    const st = ponte.estado();
+    if (!st.emJogo || !st.vivo || !st.pos) return;
+    const monstros = ponte.monstros();
+    const atual = ponte.objetivo();
+    const escolha = area.passo(st.pos, monstros, atual, Date.now());
+    if (!escolha) return;
+    if (ponte.mirar(escolha.id)) {
+      areaAlvo = escolha.id;
+      areaMobs = escolha.count;
+      registro.evento("area_alvo", {
+        id: escolha.id,
+        mobs: escolha.count,
+        antes: atual,
+        dist: Math.round(escolha.distance * 10) / 10,
+        raio: 2.5,
+        candidatos: monstros.length,
+      });
     }
   }
 
@@ -1726,6 +1939,11 @@ function criarPainel(opcoes) {
   } else {
     tentarRestaurarSessao();
     tentarRetomarRota();
+  }
+
+  // Reaplica o Hunt Assist em "área" depois de cada recarga, se estava ligado.
+  if (areaLigada) {
+    setTimeout(function () { otimizarArea(false); }, 2500);
   }
 
   // ---- ligação com o painel nativo (APK) ---------------------------------
@@ -1755,6 +1973,7 @@ function criarPainel(opcoes) {
   }, 3000);
 
   setInterval(vigiarConexao, 5000);
+  setInterval(passoArea, 700);
 
   window.Olivia = {
     motor: motor,
@@ -1795,6 +2014,24 @@ function criarPainel(opcoes) {
     },
     area: {
       otimizar: function () { return otimizarArea(false); },
+      ligado: function () { return areaLigada; },
+      definir: function (v) {
+        areaLigada = !!v;
+        try { localStorage.setItem("ovw.area", areaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
+        if (areaLigada) {
+          otimizarArea(false);
+          passoArea();
+        } else {
+          area.reset();
+          areaAlvo = null;
+          areaMobs = 0;
+        }
+        publicar();
+        return areaLigada;
+      },
+      estado: function () {
+        return { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs, raio: 2.5 };
+      },
     },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },

@@ -5,6 +5,7 @@ import { criarLog } from "./log.js";
 import { criarMotor } from "./motor.js";
 import { criarAntiBot } from "./antibot.js";
 import { criarPainel } from "./painel.js";
+import { criarArea } from "./area.js";
 
 (function () {
   "use strict";
@@ -70,6 +71,13 @@ import { criarPainel } from "./painel.js";
   let reconSucessos = 0;
   let ultimaReconexao = 0;
   let wsEstavaAberto = false;
+
+  let areaLigada = (function () {
+    try { return localStorage.getItem("ovw.area") === "1"; } catch (e) { return false; }
+  })();
+  const area = criarArea();
+  let areaAlvo = null;
+  let areaMobs = 0;
 
   // Mantém a conexão viva quando o WS cai no meio do jogo (mesma ideia do AutoReconnect).
   function vigiarConexao() {
@@ -222,6 +230,7 @@ import { criarPainel } from "./painel.js";
       autoTarefas: { ligado: autoTarefas },
       pausaHumana: { ligado: motor.humano.ligado() },
       reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
+      area: { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -267,8 +276,8 @@ import { criarPainel } from "./painel.js";
     registro.evento("bonus_aceito", { id: m.id });
   }
 
-  // Hunt Assist: "mais juntos" + alvo próximo = mesma ideia do AreaAttack do desktop
-  // (escolhe o alvo cujo círculo cobre mais monstros, sem trocar por 1).
+  // A escolha de alvo é NOSSA (círculo de 5 SQM centrado no alvo). Desligamos o
+  // "escolher alvo sozinho" do Hunt Assist para ele não sobrescrever a escolha.
   function otimizarArea(segundaTentativa) {
     const a = window.Asistente;
     if (!a) {
@@ -285,8 +294,8 @@ import { criarPainel } from "./painel.js";
     }
     try {
       a.aa.on = true;
-      a.aa.cerca = true;
-      a.aa.modo = 2; // 2 = mais juntos
+      a.aa.cerca = false; // alvo vem do Olivia (AreaAttack local)
+      a.aa.modo = 2; // 2 = mais juntos (mantém a compatibilidade)
       if (typeof a.mandarAA === "function") {
         a.mandarAA();
       } else {
@@ -300,11 +309,35 @@ import { criarPainel } from "./painel.js";
             (c.runa || 0) + ":" + (c.on ? 1 : 0) + ";" + (a.aa.recta ? 1 : 0),
         });
       }
-      registro.evento("area_otimizada", { modo: 2, cerca: true });
+      registro.evento("area_otimizada", { modo: 2, cerca: false, raio: 2.5 });
       return true;
     } catch (e) {
       registro.evento("area_erro", { erro: String(e) });
       return false;
+    }
+  }
+
+  // A cada 700 ms reavalia o alvo com o círculo de raio 2,5 (diâmetro 5) e a
+  // histerese do desktop: +2 monstros para trocar e 3 s segurando o escolhido.
+  function passoArea() {
+    if (!areaLigada || !ponte.pronto()) return;
+    const st = ponte.estado();
+    if (!st.emJogo || !st.vivo || !st.pos) return;
+    const monstros = ponte.monstros();
+    const atual = ponte.objetivo();
+    const escolha = area.passo(st.pos, monstros, atual, Date.now());
+    if (!escolha) return;
+    if (ponte.mirar(escolha.id)) {
+      areaAlvo = escolha.id;
+      areaMobs = escolha.count;
+      registro.evento("area_alvo", {
+        id: escolha.id,
+        mobs: escolha.count,
+        antes: atual,
+        dist: Math.round(escolha.distance * 10) / 10,
+        raio: 2.5,
+        candidatos: monstros.length,
+      });
     }
   }
 
@@ -329,6 +362,11 @@ import { criarPainel } from "./painel.js";
   } else {
     tentarRestaurarSessao();
     tentarRetomarRota();
+  }
+
+  // Reaplica o Hunt Assist em "área" depois de cada recarga, se estava ligado.
+  if (areaLigada) {
+    setTimeout(function () { otimizarArea(false); }, 2500);
   }
 
   // ---- ligação com o painel nativo (APK) ---------------------------------
@@ -358,6 +396,7 @@ import { criarPainel } from "./painel.js";
   }, 3000);
 
   setInterval(vigiarConexao, 5000);
+  setInterval(passoArea, 700);
 
   window.Olivia = {
     motor: motor,
@@ -398,6 +437,24 @@ import { criarPainel } from "./painel.js";
     },
     area: {
       otimizar: function () { return otimizarArea(false); },
+      ligado: function () { return areaLigada; },
+      definir: function (v) {
+        areaLigada = !!v;
+        try { localStorage.setItem("ovw.area", areaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
+        if (areaLigada) {
+          otimizarArea(false);
+          passoArea();
+        } else {
+          area.reset();
+          areaAlvo = null;
+          areaMobs = 0;
+        }
+        publicar();
+        return areaLigada;
+      },
+      estado: function () {
+        return { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs, raio: 2.5 };
+      },
     },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },

@@ -10,6 +10,7 @@ export function criarPonteNavegador() {
       J: window.J,
       Hud: window.Hud,
       EresBot: window.EresBot,
+      Pelea: window.Pelea,
     };
   }
 
@@ -105,6 +106,50 @@ export function criarPonteNavegador() {
     return w.Red.enviar(msg) !== false;
   }
 
+  // Monstros vivos visíveis (entidades "m..."), para a escolha de alvo em área.
+  function monstros() {
+    const w = cru();
+    const j = w.J;
+    if (!j || !j.ents || typeof j.ents[Symbol.iterator] !== "function") return [];
+    const eu = minhaEntidade();
+    const lista = [];
+    for (const [chave, e] of j.ents) {
+      if (!chave || chave[0] !== "m") continue;
+      const id = Number(chave.slice(1));
+      if (!Number.isFinite(id)) continue;
+      if (!e || e.muerto || !Number.isFinite(e.x) || !Number.isFinite(e.y)) continue;
+      if (eu) {
+        if (eu.mundo != null && e.mundo != null && e.mundo !== eu.mundo) continue;
+        if (eu.piso != null && e.piso != null && e.piso !== eu.piso) continue;
+      }
+      lista.push({ id: id, x: e.x, y: e.y });
+    }
+    return lista;
+  }
+
+  // Alvo atual do cliente quando é monstro (a UI guarda em `Pelea.obj`).
+  function objetivo() {
+    const w = cru();
+    const p = w.Pelea;
+    if (!p || !p.obj || p.obj.tipo !== "m") return null;
+    const id = Number(p.obj.id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+
+  // Mesmo caminho da interface (`Pelea.poner`); cai para o envio direto se mudar.
+  function mirar(id) {
+    const w = cru();
+    try {
+      if (w.Pelea && typeof w.Pelea.poner === "function") {
+        w.Pelea.poner("m", id, true);
+        return true;
+      }
+    } catch (e) {
+      // sem Pelea: manda a mesma mensagem
+    }
+    return enviar({ t: "objetivo", monstruo: id });
+  }
+
   function aoReceber(tipo, fn) {
     const w = cru();
     if (!w.Red || typeof w.Red.al !== "function") return false;
@@ -181,6 +226,6 @@ export function criarPonteNavegador() {
 
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, caminavel,
+    inventario, suprimentos, caminavel, monstros, objetivo, mirar,
   };
 }

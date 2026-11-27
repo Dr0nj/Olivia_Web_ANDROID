@@ -231,6 +231,17 @@ export function criarMotor(opcoes) {
         enviarIr(alvo.x, alvo.y, false);
         return;
       }
+      if (d.acao === "passo") {
+        // Último sqm no mesmo tile: `ir` não entra no piso do jogador, `dir` entra.
+        // Um passo por vez: solta a direção antes do próximo tile para não ultrapassar.
+        trecho = null;
+        ultimoAlvo = "";
+        cfg.ponte.enviar({ t: "dir", dx: d.dx, dy: d.dy });
+        setTimeout(function () {
+          if (modo === "seguir") cfg.ponte.enviar({ t: "parar" });
+        }, 240);
+        return;
+      }
       if (d.acao === "perdeu") {
         registro.evento("seguir_perdeu", { alvo: d.alvo });
         parar("alvo_perdido");

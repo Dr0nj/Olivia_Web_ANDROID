@@ -69,6 +69,7 @@ public class MainActivity extends Activity {
             @Override public void ligarAutoTarefas(boolean ligado) { chamarJs("Olivia.autoTarefas.definir(" + ligado + ")"); }
             @Override public void ligarPausaHumana(boolean ligado) { chamarJs("Olivia.pausaHumana.definir(" + ligado + ")"); }
             @Override public void ligarReconexao(boolean ligado) { chamarJs("Olivia.reconexao.definir(" + ligado + ")"); }
+            @Override public void ligarArea(boolean ligado) { chamarJs("Olivia.area.definir(" + ligado + ")"); }
             @Override public void otimizarArea() { chamarJs("Olivia.area.otimizar()"); }
             @Override public void zerar() { chamarJs("Olivia.zerar()"); }
             @Override public void recarregar() { web.reload(); }

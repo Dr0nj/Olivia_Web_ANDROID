@@ -93,7 +93,7 @@ try {
         $c = ([regex]::Match($p, '"c":(\d+)')).Groups[1].Value
         $w = ([regex]::Match($p, '"w":"([^"]*)"')).Groups[1].Value
         "PING q=$q c=$c w=$w"
-      } elseif ($p -match '"t":"(ir|parar|chat|sello|skill|usar|recoger)"') {
+      } elseif ($p -match '"t":"(ir|parar|dir|objetivo|chat|sello|skill|usar|recoger|huntassist)"') {
         'ENVIOU: ' + $p.Substring(0, [Math]::Min(160, $p.Length))
       }
     }

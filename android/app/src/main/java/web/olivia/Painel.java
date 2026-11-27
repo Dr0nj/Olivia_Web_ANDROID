@@ -11,6 +11,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.ScrollView;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -42,6 +43,7 @@ class Painel {
         void ligarAutoTarefas(boolean ligado);
         void ligarPausaHumana(boolean ligado);
         void ligarReconexao(boolean ligado);
+        void ligarArea(boolean ligado);
         void otimizarArea();
         void zerar();
         void recarregar();
@@ -79,6 +81,7 @@ class Painel {
     private LinearLayout telaRota;
     private LinearLayout telaConfig;
     private LinearLayout telaSeguir;
+    private ScrollView rolagemCorpo;
     private LinearLayout listaSeguir;
     private EditText distanciaSeguir;
     private TextView alvoSeguir;
@@ -89,6 +92,7 @@ class Painel {
     private TextView atrasoResumo;
     private TextView atrasoResumoConfig;
     private CheckBox pausaHumana;
+    private CheckBox area;
     private Grafico grafico;
     private long ultimoGrafico = 0;
     private String posAtual = "";
@@ -118,7 +122,8 @@ class Painel {
         alternar.setPadding(d(10), 0, d(2), 0);
         alternar.setOnClickListener(v -> {
             recolhido = !recolhido;
-            corpo.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (rolagemCorpo != null) rolagemCorpo.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            else corpo.setVisibility(recolhido ? View.GONE : View.VISIBLE);
             estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);
             if (engrenagem != null) engrenagem.setVisibility(recolhido ? View.GONE : View.VISIBLE);
             if (divisor != null) divisor.setVisibility(recolhido ? View.GONE : View.VISIBLE);
@@ -154,7 +159,20 @@ class Painel {
         divisor = divisorLocal;
         raiz.addView(divisorLocal, pd);
 
-        raiz.addView(corpo);
+        // O conteúdo pode crescer (Configurações); limita a altura da tela e rola.
+        rolagemCorpo = new ScrollView(ctx) {
+            @Override
+            protected void onMeasure(int largura, int altura) {
+                int limite = ctx.getResources().getDisplayMetrics().heightPixels - d(92);
+                if (limite < d(140)) limite = d(140);
+                super.onMeasure(largura, View.MeasureSpec.makeMeasureSpec(limite, View.MeasureSpec.AT_MOST));
+            }
+        };
+        rolagemCorpo.setFillViewport(false);
+        rolagemCorpo.setVerticalScrollBarEnabled(true);
+        rolagemCorpo.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        rolagemCorpo.addView(corpo);
+        raiz.addView(rolagemCorpo);
 
         telaHub = new LinearLayout(ctx);
         telaHub.setOrientation(LinearLayout.VERTICAL);
@@ -400,14 +418,22 @@ class Painel {
         tela.addView(texto("Exato usa o \"de\"; aleatório sorteia entre \"de\" e \"até\".",
                 8.5f, Color.rgb(111, 138, 156), false));
 
-        LinearLayout linhaArea = linha();
-        linhaArea.setPadding(0, d(5), 0, 0);
-        linhaArea.addView(botao("Otimizar ataque em área", v -> {
-            acoes.otimizarArea();
-            nota("área: alvo mais juntos");
-        }));
-        tela.addView(linhaArea);
-        tela.addView(texto("Hunt Assist: ativa área, alvo próximo e modo \"mais juntos\".",
+        area = new CheckBox(ctx);
+        estilizarCaixa(area);
+        area.setText("Otimizar ataque em área");
+        area.setTextSize(9.5f);
+        area.setTextColor(Color.rgb(223, 231, 238));
+        area.setChecked(prefs.getBoolean("area", false));
+        area.setPadding(0, d(5), 0, 0);
+        area.setOnCheckedChangeListener((b, marcado) -> {
+            prefs.edit().putBoolean("area", marcado).apply();
+            acoes.ligarArea(marcado);
+            nota(marcado ? "área ligada (círculo de 5 sqm)" : "área desligada");
+        });
+        tela.addView(area);
+        tela.addView(texto("Círculo de 5 sqm (raio 2,5) centrado no alvo: escolhe o monstro\n"
+                + "que cobre mais monstros. Só troca com +2 e segura 3 s. Usa as skills do\n"
+                + "Hunt Assist (o alvo sozinho do jogo fica desligado).",
                 8.5f, Color.rgb(111, 138, 156), false));
 
         LinearLayout volta = linha();
@@ -907,6 +933,12 @@ class Painel {
             if (recon != null && reconexao != null) {
                 boolean lig = recon.optBoolean("ligado", true);
                 if (reconexao.isChecked() != lig) reconexao.setChecked(lig);
+            }
+
+            JSONObject areaJson = s.optJSONObject("area");
+            if (areaJson != null && area != null) {
+                boolean lig = areaJson.optBoolean("ligado", false);
+                if (area.isChecked() != lig) area.setChecked(lig);
             }
 
             if (autoTarefasJson != null) {

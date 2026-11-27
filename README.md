@@ -68,6 +68,8 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   ao hub pelo **Voltar**.
 - **Recolher (≡)**: minimizado fica só **“Olivia ≡”** numa pílula no canto; tocar de novo
   restaura o painel completo (252 dp na lateral).
+- **Arrastar**: segure a faixa do cabeçalho (onde está “Olivia”) e arraste para qualquer
+  canto, aberto ou recolhido; a posição fica salva e é restaurada ao abrir.
 - **Gráfico**: sparkline nativo de **XP/h dos últimos 5 min** no topo do hub (cartão
   arredondado, área com degradê, grade e ponto atual).
 - **Ícone**: o mesmo do Olivia desktop (o boneco no carrinho), em todas as densidades.

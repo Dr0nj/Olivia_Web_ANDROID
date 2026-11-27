@@ -9,6 +9,7 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -123,6 +124,7 @@ class Painel {
             }
             raiz.setPadding(d(recolhido ? 7 : 9), d(recolhido ? 3 : 6),
                     d(recolhido ? 7 : 9), d(recolhido ? 3 : 7));
+            raiz.postDelayed(this::limitarPainel, 80);
         });
         topo.addView(titulo);
         LinearLayout espaco = new LinearLayout(ctx);
@@ -132,6 +134,7 @@ class Painel {
         topo.addView(engrenagemLocal);
         topo.addView(alternar);
         raiz.addView(topo);
+        tornarArrastavel(topo);
 
         View divisorLocal = new View(ctx);
         divisorLocal.setBackgroundColor(Color.argb(110, 58, 127, 154));
@@ -283,7 +286,79 @@ class Painel {
         p.gravity = Gravity.TOP | Gravity.START;
         p.setMargins(d(4), d(4), 0, 0);
         raiz.setLayoutParams(p);
+        raiz.postDelayed(this::restaurarPosicao, 300);
         return raiz;
+    }
+
+    /** Permite arrastar o painel pela faixa do cabeçalho (aberto ou recolhido). */
+    private void tornarArrastavel(final View alca) {
+        alca.setOnTouchListener(new View.OnTouchListener() {
+            private float inicioX;
+            private float inicioY;
+            private int margemX;
+            private int margemY;
+            private boolean arrastando;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent e) {
+                ViewGroup.LayoutParams bruto = raiz.getLayoutParams();
+                if (!(bruto instanceof FrameLayout.LayoutParams)) return false;
+                FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bruto;
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        inicioX = e.getRawX();
+                        inicioY = e.getRawY();
+                        margemX = p.leftMargin;
+                        margemY = p.topMargin;
+                        arrastando = false;
+                        return true;
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = e.getRawX() - inicioX;
+                        float dy = e.getRawY() - inicioY;
+                        if (Math.abs(dx) > d(3) || Math.abs(dy) > d(3)) arrastando = true;
+                        p.leftMargin = margemX + (int) dx;
+                        p.topMargin = margemY + (int) dy;
+                        raiz.setLayoutParams(p);
+                        limitarPainel();
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (arrastando) {
+                            ViewGroup.LayoutParams fim = raiz.getLayoutParams();
+                            if (fim instanceof FrameLayout.LayoutParams) {
+                                FrameLayout.LayoutParams f = (FrameLayout.LayoutParams) fim;
+                                prefs.edit().putInt("painelX", f.leftMargin)
+                                        .putInt("painelY", f.topMargin).apply();
+                            }
+                        }
+                        return true;
+                }
+                return false;
+            }
+        });
+    }
+
+    private void limitarPainel() {
+        ViewGroup.LayoutParams bruto = raiz.getLayoutParams();
+        if (!(bruto instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bruto;
+        View pai = (View) raiz.getParent();
+        if (pai == null || pai.getWidth() <= 0) return;
+        int maxX = Math.max(0, pai.getWidth() - raiz.getWidth());
+        int maxY = Math.max(0, pai.getHeight() - raiz.getHeight());
+        p.leftMargin = Math.max(0, Math.min(p.leftMargin, maxX));
+        p.topMargin = Math.max(0, Math.min(p.topMargin, maxY));
+        raiz.setLayoutParams(p);
+    }
+
+    private void restaurarPosicao() {
+        if (!(raiz.getLayoutParams() instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) raiz.getLayoutParams();
+        p.leftMargin = prefs.getInt("painelX", d(4));
+        p.topMargin = prefs.getInt("painelY", d(4));
+        raiz.setLayoutParams(p);
+        raiz.postDelayed(this::limitarPainel, 500);
     }
 
     private LinearLayout montarTelaRota() {

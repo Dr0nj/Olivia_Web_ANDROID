@@ -1,9 +1,9 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.11
+**Versão:** 0.9.12
 **Data:** 2026-11-27
-**Commit:** release v0.9.11
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.11
+**Commit:** release v0.9.12
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.12
 **APK:** `android/app/build/olivia-web.apk` (149 KB)
 
 ## Validado
@@ -18,6 +18,13 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.12 (rodapé e configurações)
+
+1. **Log** duplicado removido de **Configurações**; fica só no rodapé fixo.
+2. **Reset Contador** saiu de **Configurações** e entrou no rodapé fixo, ao lado do
+   **Log**.
+3. **Configurações** agora termina no RTC e no **Voltar**.
 
 ## Mudanças da 0.9.11 (tabela igual ao desktop)
 
@@ -136,9 +143,9 @@
 4. **UI do hub**: status grande (`ANDANDO`/`PAUSA`/`STOPPED`/`CAÇANDO`), ponto atual
    com posição, nível, volta e tempo; cartões de XP/h, XP da sessão, gold coletado,
    previsão de suprimentos, tasks, anti-bot, stamina e voltas. Vida/mana e gráfico
-   removidos do hub; Rota/Seguir jogador/Iniciar rota/Parar ficam na mesma linha e o
-   **Log** fica no rodapé fixo. O painel ocupa toda a lateral útil do celular deitado,
-   mantendo o fundo e os contornos arredondados.
+   removidos do hub; Rota/Seguir jogador/Iniciar rota/Parar ficam na mesma linha e
+   **Reset Contador** + **Log** ficam no rodapé fixo. O painel ocupa toda a lateral útil
+   do celular deitado, mantendo o fundo e os contornos arredondados.
 5. **RTC sempre ligado** (opcional): se `Asistente.aa.on` estiver falso, usa
    `Asistente.mandarAA()` (mesma API do botão RTC) para religar. Respeita menu aberto,
    não reenvia se já está ligado e entra em backoff após 3 recusas do servidor.

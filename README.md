@@ -77,8 +77,8 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   `{t:"pc",k:"xd"}`. Só posiciona: **não dispara magia**. Liga/desliga sem reiniciar o
   seguir e a escolha é refeita no máximo 1x/s.
 - **Sessão**: “sessão atual” (tempo), xp/h (XP absoluto, sem ficar negativo ao subir de
-  nível), pontos, voltas, mortes, paradas, desafios respondidos/janelas. **Resetar sessão**
-  zera os contadores.
+  nível), pontos, voltas, mortes, paradas, desafios respondidos/janelas. **Reset Contador**
+  no rodapé zera os contadores.
 - **Suprimentos**: poções, runas e outros consumíveis da mochila; consumo/hora e tempo
   restante estimado pelo **saldo líquido** (gasto menos loot). O cartão do hub mostra
   apenas a previsão até o **primeiro supply acabar**; **toque nele** para abrir a aba
@@ -141,7 +141,8 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   arredondado, área com degradê, grade e ponto atual).
 - **Ícone**: o mesmo do Olivia desktop (o boneco no carrinho), em todas as densidades.
 - **Painel nativo** (fora do DOM, invisível para o detector): estado, contadores, vida,
-  poções, gráfico, botões **Rota / Seguir jogador / Parar**, **Resetar sessão** e **log**.
+  poções, gráfico, botões **Rota / Seguir jogador / Parar** e, no rodapé fixo,
+  **Reset Contador** e **Log**.
 - **Presença**: enquanto anda, o app envia pares de teclas Shift (eventos confiáveis) para
   o cliente ver entrada recente e não acender o bit 64.
 

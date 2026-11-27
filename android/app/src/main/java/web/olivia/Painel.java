@@ -217,6 +217,7 @@ class Painel {
         nota.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         nota.setOnClickListener(v -> dialogoLog());
         rodape.addView(nota);
+        rodape.addView(botao("Reset Contador", v -> acoes.zerar()));
         rodape.addView(botao("Log", v -> dialogoLog()));
         rodapeFixo = rodape;
         raiz.addView(rodape);
@@ -695,12 +696,6 @@ class Painel {
         tela.addView(texto("Se o jogo desligar o RTC, o Olivia liga de novo usando a mesma\n"
                 + "API do botão RTC. Não interfere enquanto o menu do jogo está aberto.",
                 8.5f, Color.rgb(111, 138, 156), false));
-
-        LinearLayout ferramentas = linha();
-        ferramentas.setPadding(0, d(6), 0, 0);
-        ferramentas.addView(botao("Resetar sessão", v -> acoes.zerar()));
-        ferramentas.addView(botao("Log", v -> dialogoLog()));
-        tela.addView(ferramentas);
 
         LinearLayout volta = linha();
         volta.setPadding(0, d(5), 0, 0);

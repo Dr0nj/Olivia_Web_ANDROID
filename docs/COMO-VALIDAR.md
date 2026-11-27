@@ -50,8 +50,8 @@ detector passa a ver entrada recente. Sem isso, 15 `ir` seguidos acendem o 64.
 
 Painel deve mostrar: “sessão atual”, xp/h, pontos, voltas, mortes, nível, vida, mana, poções,
 desafio e o **gráfico de xp/h dos últimos 5 min**. No cabeçalho: **⚙** (Configurações) e
-**≡** (recolher). O hub tem **Rota**, **Seguir jogador**, **Parar**, **Resetar sessão** e
-**log**.
+**≡** (recolher). O hub tem **Rota**, **Seguir jogador**, **Parar** e, no rodapé fixo,
+**Reset Contador** e **Log**.
 
 Em **⚙**:
 - **Responder «Não»**, **Repetir a rota (laço)**, **Repetir tasks e aceitar missões**;

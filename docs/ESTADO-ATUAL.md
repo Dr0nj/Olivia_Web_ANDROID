@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.10
+**Versão:** 0.9.11
 **Data:** 2026-11-27
-**Commit:** release v0.9.10
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.10
+**Commit:** release v0.9.11
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.11
 **APK:** `android/app/build/olivia-web.apk` (149 KB)
 
 ## Validado
 
-- **143 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **144 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -18,6 +18,21 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.11 (tabela igual ao desktop)
+
+1. A visão geral mostra **só o tempo até o primeiro supply acabar**; saiu o `V 0 · M 0`.
+2. A aba **Suprimentos** virou a mesma tabela do Olivia desktop:
+   - `Supply` · nome real do item;
+   - `Restantes` · quantidade na mochila;
+   - `Saídas/min` · consumo bruto por minuto (`—` quando ainda não mediu);
+   - `Duração` · tempo até acabar ou `coletando dados`, `loot repõe`, `esgotado`.
+3. Acima da tabela: `Primeiro a acabar: <item> às ~dd/MM HH:mm:ss`.
+4. O estimador recebe **todos os itens** da mochila/bolsa, então runas como Fire Ball e
+   Spirit of Doom aparecem igual ao desktop. Itens desconhecidos só entram depois de
+   serem consumidos; poções de mana conhecidas aparecem mesmo sem uso.
+5. Ordenação igual à do desktop: primeiro quem tem menos tempo, depois os estados sem
+   previsão.
 
 ## Mudanças da 0.9.10 (suprimentos com dados reais)
 

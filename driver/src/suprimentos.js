@@ -10,6 +10,13 @@ const MINIMO_CONSUMO = 3;
 const RECENTE_MS = 120000;
 const LOOT_MAX = 20;
 
+// Mesmas "suprimentos conhecidas" do desktop (SupplyEstimator): poções de mana e
+// a runa 5002 aparecem mesmo sem uso; o resto só aparece depois de ser consumido.
+function conhecido(id) {
+  const n = Number(id);
+  return (n >= 4101 && n <= 4105) || n === 5002;
+}
+
 export function criarSuprimentos(opcoes) {
   const cfg = Object.assign({
     janelaMs: JANELA_MS,
@@ -150,6 +157,7 @@ export function criarSuprimentos(opcoes) {
     let temColetando = false;
 
     for (const h of registros.values()) {
+      if (!h.used && !conhecido(h.id)) continue;
       const janela = h.samples.filter((a) => a.t >= agora - cfg.janelaMs);
       const primeiro = janela[0];
       const ultimoItem = janela[janela.length - 1];

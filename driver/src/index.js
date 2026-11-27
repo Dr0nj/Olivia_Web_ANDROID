@@ -272,7 +272,7 @@ import { criarTarefas } from "./tarefas.js";
     const sup = ponte.suprimentos ? ponte.suprimentos() : null;
     const agora = Date.now();
     if (sup) {
-      motor.suprimentos.registrar(sup.pocoes || [], agora);
+      motor.suprimentos.registrar(sup.lista || sup.pocoes || [], agora);
       motor.sessao.ouroAtual(sup.oro);
     }
     const supResumo = sup ? motor.suprimentos.resumo(agora) : null;

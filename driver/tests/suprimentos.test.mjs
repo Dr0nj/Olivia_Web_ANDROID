@@ -64,6 +64,21 @@ test("loot que repõe o gasto não fica preso em coletando", () => {
   assert.equal(r.itens[0].status, "loot repõe");
 });
 
+test("mostra poção de mana conhecida sem uso e esconde item desconhecido parado", () => {
+  const s = criarSuprimentos({ janelaMs: 600000, minimoMs: 1000, minimoConsumo: 1 });
+  const mana = { id: 4101, nome: "Mana Potion", tipo: "mana", quantidade: 10 };
+  const minerio = { id: 9999, nome: "Iron Ore", tipo: "CREATURE_PRODUCT", quantidade: 500 };
+  s.registrar([mana, minerio], 0);
+  s.registrar([mana, minerio], 60000);
+  const r = s.resumo(60000);
+  assert.deepEqual(r.itens.map((i) => i.id), [4101]);
+
+  s.registrar([mana, { ...minerio, quantidade: 490 }], 120000);
+  const r2 = s.resumo(120000);
+  assert.deepEqual(r2.itens.map((i) => i.id).sort(), [4101, 9999]);
+  assert.equal(r2.itens.find((i) => i.id === 9999).saidas, 10);
+});
+
 test("reposição zera a janela antiga", () => {
   const s = criarSuprimentos({ janelaMs: 10000, minimoMs: 1000, minimoConsumo: 1 });
   s.registrar(10, 0);

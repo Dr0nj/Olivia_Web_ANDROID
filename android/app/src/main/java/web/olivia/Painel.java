@@ -27,7 +27,10 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -110,10 +113,6 @@ class Painel {
     private LinearLayout telaSeguir;
     private LinearLayout telaSuprimentos;
     private LinearLayout listaSuprimentos;
-    private TextView supTelaValor;
-    private TextView supTelaDetalhe;
-    private TextView supTelaTaxas;
-    private TextView supTelaAmostra;
     private TextView supTelaPrimeiro;
     private final Map<String, LinhaSuprimento> linhasSuprimento = new LinkedHashMap<>();
     private String assinaturaSuprimento = "";
@@ -261,6 +260,7 @@ class Painel {
         supValor = texto("—", 15.5f, amarelo, true);
         supDetalhe = texto(" ", 8.2f, suave, false);
         LinearLayout cardSup = cartao("SUPRIMENTOS ›", supValor, supDetalhe, amarelo);
+        supDetalhe.setVisibility(View.GONE);
         cardSup.setClickable(true);
         cardSup.setFocusable(true);
         cardSup.setOnClickListener(v -> abrirTelaSuprimentos());
@@ -301,32 +301,28 @@ class Painel {
         LinearLayout tela = new LinearLayout(ctx);
         tela.setOrientation(LinearLayout.VERTICAL);
         tela.addView(texto("Suprimentos", 10.5f, Color.rgb(207, 227, 242), true));
-        tela.addView(texto("Previsão pelo saldo: gasto menos o que o loot repõe.", 8.5f,
-                Color.rgb(111, 138, 156), false));
+        supTelaPrimeiro = texto("Supplies: coletando dados", 8.6f,
+                Color.rgb(207, 227, 242), false);
+        supTelaPrimeiro.setPadding(0, d(2), 0, d(5));
+        tela.addView(supTelaPrimeiro);
 
-        supTelaValor = texto("—", 16f, Color.rgb(242, 198, 91), true);
-        supTelaDetalhe = texto(" ", 9.2f, Color.rgb(207, 227, 242), false);
-        supTelaTaxas = texto(" ", 8.3f, Color.rgb(159, 179, 194), false);
-        supTelaAmostra = texto(" ", 8.3f, Color.rgb(159, 179, 194), false);
-        supTelaPrimeiro = texto(" ", 8.3f, Color.rgb(111, 138, 156), false);
-        LinearLayout resumo = cartao("PREVISÃO TOTAL", supTelaValor, supTelaDetalhe,
-                Color.rgb(242, 198, 91));
-        resumo.addView(supTelaTaxas);
-        resumo.addView(supTelaAmostra);
-        resumo.addView(supTelaPrimeiro);
-        LinearLayout.LayoutParams pResumo = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        pResumo.topMargin = d(4);
-        tela.addView(resumo, pResumo);
-
-        TextView tituloLista = texto("POR ITEM", 7.8f, Color.argb(220, 111, 138, 156), true);
-        tituloLista.setLetterSpacing(0.06f);
-        tituloLista.setPadding(0, d(7), 0, 0);
-        tela.addView(tituloLista);
-
+        LinearLayout tabela = new LinearLayout(ctx);
+        tabela.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable fundo = new GradientDrawable();
+        fundo.setColor(Color.argb(205, 12, 20, 27));
+        fundo.setCornerRadius(d(7));
+        fundo.setStroke(Math.max(1, d(1)), Color.argb(85, 61, 85, 102));
+        tabela.setBackground(fundo);
+        tabela.setPadding(d(6), d(5), d(6), d(5));
+        tabela.addView(criarCabecalhoSuprimento());
+        tabela.addView(divisorSuprimento());
         listaSuprimentos = new LinearLayout(ctx);
         listaSuprimentos.setOrientation(LinearLayout.VERTICAL);
-        tela.addView(listaSuprimentos);
+        tabela.addView(listaSuprimentos);
+        LinearLayout.LayoutParams pTabela = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pTabela.topMargin = d(2);
+        tela.addView(tabela, pTabela);
 
         LinearLayout volta = linha();
         volta.setPadding(0, d(6), 0, 0);
@@ -335,6 +331,55 @@ class Painel {
 
         tela.setVisibility(View.GONE);
         return tela;
+    }
+
+    private LinearLayout criarCabecalhoSuprimento() {
+        LinearLayout linha = new LinearLayout(ctx);
+        linha.setOrientation(LinearLayout.HORIZONTAL);
+        linha.addView(colunaSuprimento("Supply", 2.2f, Gravity.START, true));
+        linha.addView(colunaSuprimento("Restantes", 0.9f, Gravity.CENTER, true));
+        linha.addView(colunaSuprimento("Saídas/min", 1.1f, Gravity.CENTER, true));
+        linha.addView(colunaSuprimento("Duração", 1.3f, Gravity.END, true));
+        return linha;
+    }
+
+    private LinhaSuprimento criarLinhaSuprimento(String nome) {
+        LinearLayout linha = new LinearLayout(ctx);
+        linha.setOrientation(LinearLayout.HORIZONTAL);
+        LinhaSuprimento l = new LinhaSuprimento();
+        l.nome = colunaSuprimento(nome, 2.2f, Gravity.START, false);
+        l.restantes = colunaSuprimento("0", 0.9f, Gravity.CENTER, false);
+        l.saidas = colunaSuprimento("—", 1.1f, Gravity.CENTER, false);
+        l.duracao = colunaSuprimento("—", 1.3f, Gravity.END, false);
+        linha.addView(l.nome);
+        linha.addView(l.restantes);
+        linha.addView(l.saidas);
+        linha.addView(l.duracao);
+        if (listaSuprimentos != null) {
+            listaSuprimentos.addView(linha);
+            listaSuprimentos.addView(divisorSuprimento());
+        }
+        return l;
+    }
+
+    private TextView colunaSuprimento(String valor, float peso, int gravidade, boolean cabecalho) {
+        TextView v = texto(valor, cabecalho ? 7.8f : 8.6f,
+                cabecalho ? Color.rgb(159, 179, 194) : Color.rgb(223, 231, 238), cabecalho);
+        v.setGravity(gravidade | Gravity.CENTER_VERTICAL);
+        v.setSingleLine(true);
+        v.setEllipsize(TextUtils.TruncateAt.END);
+        v.setPadding(d(2), d(3), d(2), d(3));
+        v.setLayoutParams(new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, peso));
+        return v;
+    }
+
+    private View divisorSuprimento() {
+        View v = new View(ctx);
+        v.setBackgroundColor(Color.argb(55, 61, 85, 102));
+        v.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, d(1))));
+        return v;
     }
 
     private void abrirTelaSuprimentos() {
@@ -348,9 +393,9 @@ class Painel {
 
     private static class LinhaSuprimento {
         TextView nome;
-        TextView valor;
-        TextView detalhe;
-        TextView taxas;
+        TextView restantes;
+        TextView saidas;
+        TextView duracao;
     }
 
     private LinearLayout montarTelaSeguir() {
@@ -1333,9 +1378,6 @@ class Painel {
             goldDetalhe.setText("agora " + numero(goldAgora));
 
             supValor.setText(valorSuprimento(sup));
-            int potVida = sup != null ? sup.optInt("vida", 0) : 0;
-            int potMana = sup != null ? sup.optInt("mana", 0) : 0;
-            supDetalhe.setText("V " + potVida + " · M " + potMana);
             atualizarTelaSuprimentos(sup);
 
             int tasks = sessao != null ? sessao.optInt("tasks", 0) : 0;
@@ -1815,16 +1857,6 @@ class Painel {
         return "coletando";
     }
 
-    private String valorItemSuprimento(JSONObject item) {
-        double restante = item.isNull("restanteMin") ? -1 : item.optDouble("restanteMin", -1);
-        String status = item.optString("status", "");
-        if (restante > 0) return tempoSuprimento(restante);
-        if ("loot repõe".equals(status)) return "loot repõe";
-        if ("esgotado".equals(status)) return "esgotado";
-        if ("sem gasto recente".equals(status)) return "sem gasto";
-        return "coletando";
-    }
-
     private static String chaveSuprimento(JSONObject item) {
         String id = item.optString("id", "");
         if (!id.isEmpty()) return id;
@@ -1832,118 +1864,108 @@ class Painel {
         return nome.isEmpty() ? "item" : nome;
     }
 
-    private LinhaSuprimento criarLinhaSuprimento(String nome) {
-        LinearLayout card = new LinearLayout(ctx);
-        card.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable fundo = new GradientDrawable();
-        fundo.setColor(Color.argb(190, 12, 20, 27));
-        fundo.setCornerRadius(d(7));
-        fundo.setStroke(Math.max(1, d(1)), Color.argb(70, 61, 85, 102));
-        card.setBackground(fundo);
-        card.setPadding(d(7), d(5), d(7), d(5));
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        p.topMargin = d(4);
-        card.setLayoutParams(p);
-
-        LinhaSuprimento l = new LinhaSuprimento();
-        l.nome = texto(nome, 8.7f, Color.rgb(207, 227, 242), true);
-        l.valor = texto("—", 13.5f, Color.rgb(242, 198, 91), true);
-        l.detalhe = texto(" ", 8.4f, Color.rgb(159, 179, 194), false);
-        l.taxas = texto(" ", 8.2f, Color.rgb(111, 138, 156), false);
-        card.addView(l.nome);
-        card.addView(l.valor);
-        card.addView(l.detalhe);
-        card.addView(l.taxas);
-        if (listaSuprimentos != null) listaSuprimentos.addView(card);
-        return l;
-    }
-
     private void atualizarTelaSuprimentos(JSONObject sup) {
-        if (supTelaValor == null) return;
-        supTelaValor.setText(valorSuprimento(sup));
+        if (supTelaPrimeiro == null) return;
         if (sup == null) {
-            supTelaDetalhe.setText("sem leitura");
-            supTelaTaxas.setText(" ");
-            supTelaAmostra.setText(" ");
-            supTelaPrimeiro.setText(" ");
+            supTelaPrimeiro.setText("Supplies: aguardando personagem conectado");
             if (listaSuprimentos != null) listaSuprimentos.removeAllViews();
             linhasSuprimento.clear();
             assinaturaSuprimento = "";
             return;
         }
 
-        int vida = sup.optInt("vida", 0);
-        int mana = sup.optInt("mana", 0);
-        supTelaDetalhe.setText("V " + vida + " · M " + mana);
-
-        double gastaMin = sup.optDouble("gastaMin", 0);
-        double repoeMin = sup.optDouble("repoeMin", 0);
-        double saldoMin = Math.max(0, gastaMin - repoeMin);
-        long saidas = Math.round(sup.optDouble("saidas", 0));
-        long entradas = Math.round(sup.optDouble("entradas", 0));
-        int janela = Math.max(0, (int) Math.round(sup.optDouble("janelaMin", 0)));
-        supTelaTaxas.setText("sai " + taxa(gastaMin) + "/min · entra " + taxa(repoeMin)
-                + "/min · saldo " + taxa(saldoMin) + "/min");
-        supTelaAmostra.setText((janela > 0 ? "janela " + janela + " min · " : "")
-                + "saiu " + numero(saidas) + " · entrou " + numero(entradas));
-        supTelaPrimeiro.setText(" ");
-
+        List<JSONObject> ordenados = new ArrayList<>();
         JSONArray detalhes = sup.optJSONArray("detalhes");
-        StringBuilder assinatura = new StringBuilder();
         if (detalhes != null) {
             for (int i = 0; i < detalhes.length(); i++) {
                 JSONObject item = detalhes.optJSONObject(i);
-                if (item == null) continue;
-                assinatura.append(chaveSuprimento(item)).append('|');
+                if (item != null) ordenados.add(item);
             }
+        }
+        Collections.sort(ordenados, (a, b) -> compararSuprimento(a, b));
+
+        StringBuilder assinatura = new StringBuilder();
+        for (JSONObject item : ordenados) {
+            assinatura.append(chaveSuprimento(item)).append('|');
         }
         if (!assinatura.toString().equals(assinaturaSuprimento)) {
             assinaturaSuprimento = assinatura.toString();
             linhasSuprimento.clear();
             if (listaSuprimentos != null) listaSuprimentos.removeAllViews();
-            if (detalhes != null) {
-                for (int i = 0; i < detalhes.length(); i++) {
-                    JSONObject item = detalhes.optJSONObject(i);
-                    if (item == null) continue;
-                    linhasSuprimento.put(chaveSuprimento(item), criarLinhaSuprimento(nomeSuprimento(item)));
-                }
+            for (JSONObject item : ordenados) {
+                linhasSuprimento.put(chaveSuprimento(item),
+                        criarLinhaSuprimento(nomeSuprimento(item)));
             }
         }
 
-        if (detalhes == null) return;
         String primeiroNome = null;
-        double primeiroMin = Double.MAX_VALUE;
-        for (int i = 0; i < detalhes.length(); i++) {
-            JSONObject item = detalhes.optJSONObject(i);
-            if (item == null) continue;
+        double primeiroMin = -1;
+        for (JSONObject item : ordenados) {
             LinhaSuprimento linha = linhasSuprimento.get(chaveSuprimento(item));
             if (linha == null) continue;
             String nome = nomeSuprimento(item);
             linha.nome.setText(nome);
-            linha.valor.setText(valorItemSuprimento(item));
-            int qtd = item.optInt("quantidade", 0);
-            long saidasItem = Math.round(item.optDouble("saidas", 0));
-            long entradasItem = Math.round(item.optDouble("entradas", 0));
-            linha.detalhe.setText("restam " + numero(qtd) + " · saiu " + numero(saidasItem)
-                    + " · entrou " + numero(entradasItem));
-            double gastaMinItem = item.optDouble("gastaMin",
+            linha.restantes.setText(String.valueOf(item.optInt("quantidade", 0)));
+            double gastaMin = item.optDouble("gastaMin",
                     item.optDouble("gastaHora", 0) / 60);
-            double repoeMinItem = item.optDouble("repoeMin",
-                    item.optDouble("repoeHora", 0) / 60);
-            double saldoMinItem = Math.max(0, gastaMinItem - repoeMinItem);
-            linha.taxas.setText("sai " + taxa(gastaMinItem) + "/min · entra "
-                    + taxa(repoeMinItem) + "/min · saldo " + taxa(saldoMinItem) + "/min");
-            double restante = item.isNull("restanteMin") ? -1 : item.optDouble("restanteMin", -1);
-            if (restante > 0 && restante < primeiroMin) {
-                primeiroMin = restante;
+            linha.saidas.setText(taxaTabela(gastaMin));
+            linha.duracao.setText(duracaoSuprimento(item));
+
+            double restante = restanteItem(item);
+            if (primeiroNome == null && restante > 0) {
                 primeiroNome = nome;
+                primeiroMin = restante;
             }
         }
+
         if (primeiroNome != null) {
-            supTelaPrimeiro.setText("primeiro a acabar: " + primeiroNome
-                    + " (" + tempoSuprimento(primeiroMin) + ")");
+            long fim = System.currentTimeMillis() + Math.round(primeiroMin * 60000.0);
+            String quando = new SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault())
+                    .format(new Date(fim));
+            supTelaPrimeiro.setText("Primeiro a acabar: " + primeiroNome + " às ~" + quando);
+        } else {
+            supTelaPrimeiro.setText("Supplies: coletando dados");
         }
+    }
+
+    private static int compararSuprimento(JSONObject a, JSONObject b) {
+        double ra = restanteItem(a);
+        double rb = restanteItem(b);
+        boolean semA = ra < 0;
+        boolean semB = rb < 0;
+        if (semA != semB) return semA ? 1 : -1;
+        if (!semA) return Double.compare(ra, rb);
+        return nomeSuprimento(a).compareToIgnoreCase(nomeSuprimento(b));
+    }
+
+    private static double restanteItem(JSONObject item) {
+        int qtd = item.optInt("quantidade", 0);
+        if (qtd <= 0) {
+            return "esgotado".equals(item.optString("status", "")) ? 0 : -1;
+        }
+        if (item.isNull("restanteMin")) return -1;
+        return item.optDouble("restanteMin", -1);
+    }
+
+    private static String duracaoSuprimento(JSONObject item) {
+        double restante = restanteItem(item);
+        if (restante > 0) {
+            long total = Math.round(restante);
+            if (total >= 60) {
+                return (total / 60) + "h " + String.format(Locale.ROOT, "%02d", total % 60) + "min";
+            }
+            return Math.max(1, total) + "min";
+        }
+        String status = item.optString("status", "");
+        if ("loot repõe".equals(status)) return "loot repõe";
+        if ("esgotado".equals(status)) return "esgotado";
+        if ("sem gasto recente".equals(status)) return "sem gasto recente";
+        return "coletando dados";
+    }
+
+    private static String taxaTabela(double porMinuto) {
+        if (!(porMinuto > 0)) return "—";
+        return String.format(Locale.ROOT, "%.1f", porMinuto);
     }
 
     private static String nomeSuprimento(JSONObject item) {
@@ -1953,12 +1975,6 @@ class Painel {
         if ("vida".equals(tipo)) return "Poção de vida";
         if ("mana".equals(tipo)) return "Poção de mana";
         return "Item " + chaveSuprimento(item);
-    }
-
-    private static String taxa(double porMinuto) {
-        if (!(porMinuto > 0)) return "0";
-        if (porMinuto >= 100) return String.valueOf(Math.round(porMinuto));
-        return String.format(Locale.getDefault(), "%.1f", porMinuto);
     }
 
     /** Stamina do jogo vem em horas decimais; mostra h:mm. */

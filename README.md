@@ -79,11 +79,11 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **Sessão**: “sessão atual” (tempo), xp/h (XP absoluto, sem ficar negativo ao subir de
   nível), pontos, voltas, mortes, paradas, desafios respondidos/janelas. **Resetar sessão**
   zera os contadores.
-- **Suprimentos**: poções de vida/mana, itens e ouro do inventário; consumo/hora e tempo
-  restante estimado pelo **saldo líquido** (gasto menos loot). O cartão do hub mostra a
-  previsão; **toque nele** para abrir a aba **Suprimentos**, com o nome real de cada
-  poção, quantidade restante, quanto **saiu** e **entrou** na janela, taxas por minuto e
-  tempo para acabar. “Itens” é a soma das quantidades na mochila (não os slots).
+- **Suprimentos**: poções, runas e outros consumíveis da mochila; consumo/hora e tempo
+  restante estimado pelo **saldo líquido** (gasto menos loot). O cartão do hub mostra
+  apenas a previsão até o **primeiro supply acabar**; **toque nele** para abrir a aba
+  **Suprimentos**, com a mesma tabela do desktop: **Supply**, **Restantes**,
+  **Saídas/min** e **Duração**. “Itens” é a soma das quantidades na mochila (não os slots).
 - **Repetir tasks e aceitar missões** (checkbox único):
   - no popup **“Task complete”**, **repete a task que acabou de finalizar** (usa o `id` do
     popup), fecha o popup pela função interna e envia
@@ -173,7 +173,7 @@ driver/src/                   motor JS
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   tarefas.js                  repetição de task + confirmação no HUD
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 143 testes (node --test)
+driver/tests/                 144 testes (node --test)
 dist/olivia-web.user.js       userscript gerado (única versão suportada)
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -188,7 +188,7 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 143 testes
+node --test driver\tests                 # 144 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 

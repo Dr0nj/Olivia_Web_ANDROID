@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.10
+// @version      0.9.11
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1731,6 +1731,13 @@ const MINIMO_CONSUMO = 3;
 const RECENTE_MS = 120000;
 const LOOT_MAX = 20;
 
+// Mesmas "suprimentos conhecidas" do desktop (SupplyEstimator): poções de mana e
+// a runa 5002 aparecem mesmo sem uso; o resto só aparece depois de ser consumido.
+function conhecido(id) {
+  const n = Number(id);
+  return (n >= 4101 && n <= 4105) || n === 5002;
+}
+
 function criarSuprimentos(opcoes) {
   const cfg = Object.assign({
     janelaMs: JANELA_MS,
@@ -1871,6 +1878,7 @@ function criarSuprimentos(opcoes) {
     let temColetando = false;
 
     for (const h of registros.values()) {
+      if (!h.used && !conhecido(h.id)) continue;
       const janela = h.samples.filter((a) => a.t >= agora - cfg.janelaMs);
       const primeiro = janela[0];
       const ultimoItem = janela[janela.length - 1];
@@ -2347,7 +2355,8 @@ function criarPonteNavegador() {
     };
   }
 
-  // Poções e afins: usa o nome do item (Hud preenche `nombre`) ou a tabela do jogo.
+  // Inventário da mochila: nome real pela tabela do jogo. O estimador recebe todos
+  // os itens e mostra só os que foram usados (ou poções conhecidas), como no desktop.
   function suprimentos() {
     const w = cru();
     const inv = (w.Hud && w.Hud.inv) || {};
@@ -2355,14 +2364,17 @@ function criarPonteNavegador() {
     let vida = 0;
     let mana = 0;
     let itens = 0;
-    const pocoes = new Map();
+    const todos = new Map();
 
-    (Array.isArray(inv.mochila) ? inv.mochila : []).forEach(function (o) {
+    const mochila = Array.isArray(inv.mochila) ? inv.mochila : [];
+    const botin = Array.isArray(inv.botin) ? inv.botin : [];
+    mochila.concat(botin).forEach(function (o) {
       if (!o) return;
       const qtd = Number(o.cant) || 0;
       itens += qtd;
       const idNum = Number(o.objeto);
-      const daTabela = tabela[o.objeto] && tabela[o.objeto][0];
+      const dados = tabela[o.objeto];
+      const daTabela = dados && dados[0];
       const nome = o.nombre || daTabela || ("#" + o.objeto);
       let tipo = null;
       if (POCOES_VIDA.has(idNum)) {
@@ -2378,27 +2390,30 @@ function criarPonteNavegador() {
         mana += qtd;
         tipo = "mana";
       }
-      if (!tipo) return;
       const chave = String(o.objeto != null ? o.objeto : nome);
-      const atual = pocoes.get(chave);
+      const atual = todos.get(chave);
       if (atual) {
         atual.quantidade += qtd;
       } else {
-        pocoes.set(chave, {
+        todos.set(chave, {
           id: o.objeto != null ? o.objeto : nome,
           nome: nome,
-          tipo: tipo,
+          tipo: tipo || (dados && dados[1]) || "outro",
           quantidade: qtd,
         });
       }
     });
 
+    const lista = Array.from(todos.values());
     return {
       vida: vida,
       mana: mana,
       itens: itens,
       oro: Number(inv.oro) || 0,
-      pocoes: Array.from(pocoes.values()),
+      lista: lista,
+      pocoes: lista.filter(function (i) {
+        return i.tipo === "vida" || i.tipo === "mana";
+      }),
     };
   }
 
@@ -3849,7 +3864,7 @@ function criarPainel(opcoes) {
     const sup = ponte.suprimentos ? ponte.suprimentos() : null;
     const agora = Date.now();
     if (sup) {
-      motor.suprimentos.registrar(sup.pocoes || [], agora);
+      motor.suprimentos.registrar(sup.lista || sup.pocoes || [], agora);
       motor.sessao.ouroAtual(sup.oro);
     }
     const supResumo = sup ? motor.suprimentos.resumo(agora) : null;

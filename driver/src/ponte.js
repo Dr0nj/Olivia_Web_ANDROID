@@ -275,7 +275,8 @@ export function criarPonteNavegador() {
     };
   }
 
-  // Poções e afins: usa o nome do item (Hud preenche `nombre`) ou a tabela do jogo.
+  // Inventário da mochila: nome real pela tabela do jogo. O estimador recebe todos
+  // os itens e mostra só os que foram usados (ou poções conhecidas), como no desktop.
   function suprimentos() {
     const w = cru();
     const inv = (w.Hud && w.Hud.inv) || {};
@@ -283,14 +284,17 @@ export function criarPonteNavegador() {
     let vida = 0;
     let mana = 0;
     let itens = 0;
-    const pocoes = new Map();
+    const todos = new Map();
 
-    (Array.isArray(inv.mochila) ? inv.mochila : []).forEach(function (o) {
+    const mochila = Array.isArray(inv.mochila) ? inv.mochila : [];
+    const botin = Array.isArray(inv.botin) ? inv.botin : [];
+    mochila.concat(botin).forEach(function (o) {
       if (!o) return;
       const qtd = Number(o.cant) || 0;
       itens += qtd;
       const idNum = Number(o.objeto);
-      const daTabela = tabela[o.objeto] && tabela[o.objeto][0];
+      const dados = tabela[o.objeto];
+      const daTabela = dados && dados[0];
       const nome = o.nombre || daTabela || ("#" + o.objeto);
       let tipo = null;
       if (POCOES_VIDA.has(idNum)) {
@@ -306,27 +310,30 @@ export function criarPonteNavegador() {
         mana += qtd;
         tipo = "mana";
       }
-      if (!tipo) return;
       const chave = String(o.objeto != null ? o.objeto : nome);
-      const atual = pocoes.get(chave);
+      const atual = todos.get(chave);
       if (atual) {
         atual.quantidade += qtd;
       } else {
-        pocoes.set(chave, {
+        todos.set(chave, {
           id: o.objeto != null ? o.objeto : nome,
           nome: nome,
-          tipo: tipo,
+          tipo: tipo || (dados && dados[1]) || "outro",
           quantidade: qtd,
         });
       }
     });
 
+    const lista = Array.from(todos.values());
     return {
       vida: vida,
       mana: mana,
       itens: itens,
       oro: Number(inv.oro) || 0,
-      pocoes: Array.from(pocoes.values()),
+      lista: lista,
+      pocoes: lista.filter(function (i) {
+        return i.tipo === "vida" || i.tipo === "mana";
+      }),
     };
   }
 

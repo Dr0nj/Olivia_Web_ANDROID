@@ -7,6 +7,10 @@ Projeto separado do Olivia desktop. Objetivo: operar o **LOW no cliente web** a 
 > rota com laço, seguidor, sessão (xp/h, pontos, voltas, mortes), poções, painel nativo e
 > retomada após reinjeção do driver. O `q` do detector fica em **16** (o embrulho que o
 > próprio jogo instala); o bit 64 (ações sem entrada) não acende com a rota rodando.
+>
+> **Estado detalhado:** `docs/ESTADO-ATUAL.md`. **Memória operacional no Repo_IA:**
+> `../../memory/projects/Olivia_Web_ANDROID/` (contexto, handoff, build/emulador e
+> releases).
 
 ## Por que é um projeto novo
 

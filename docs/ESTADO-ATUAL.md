@@ -2,8 +2,8 @@
 
 **Versão:** 0.9.2
 **Data:** 2026-11-27
-**Commit:** `e17460d` + ponto de caça
-**Release:** pendente da 0.9.2
+**Commit:** `41d9f00` + release 0.9.2
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.2
 **APK:** `android/app/build/olivia-web.apk` (125 KB)
 
 ## Validado

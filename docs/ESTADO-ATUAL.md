@@ -1,9 +1,9 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.9
+**Versão:** 0.9.10
 **Data:** 2026-11-27
-**Commit:** release v0.9.9
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.9
+**Commit:** release v0.9.10
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.10
 **APK:** `android/app/build/olivia-web.apk` (149 KB)
 
 ## Validado
@@ -18,6 +18,17 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.10 (suprimentos com dados reais)
+
+1. **Nome real do item**: a ponte agora reconhece as poções pelos IDs fixos do cliente
+   (4101–4105 mana; 4201–4205/4251/4252 vida) e usa `Hud.datos.objetos[id][0]`, então
+   aparece `Mana Potion`/`Health Potion` (ou o nome localizado) em vez de “Item”.
+2. **Entradas e saídas**: cada item mostra `restam N · saiu X · entrou Y` na janela de
+   medição, além de `sai A/min · entra B/min · saldo C/min`.
+3. **Previsão total**: mostra a janela, o total que saiu/entrou e o
+   **primeiro a acabar** (`primeiro a acabar: <nome> (~Xh)`), como no desktop.
+4. Corrigida a taxa exibida: antes o valor tratado como `/h` era, na prática, `/min`.
 
 ## Mudanças da 0.9.9 (detalhe de suprimentos)
 

@@ -40,6 +40,16 @@ test("calcula por item, separa gasto de loot e usa o saldo líquido", () => {
   assert.ok(r.gastaHora > 0);
   assert.ok(r.repoeHora > 0);
   assert.equal(r.consumoHora, Math.max(0, r.gastaHora - r.repoeHora));
+  assert.equal(vidaR.saidas, 20);
+  assert.equal(vidaR.entradas, 0);
+  assert.equal(vidaR.janelaMin, 2);
+  assert.equal(manaR.saidas, 5);
+  assert.equal(manaR.entradas, 10);
+  assert.equal(r.saidas, 25);
+  assert.equal(r.entradas, 10);
+  assert.equal(r.janelaMin, 2);
+  assert.equal(vidaR.gastaMin, 10);
+  assert.equal(manaR.repoeMin, 5);
 });
 
 test("loot que repõe o gasto não fica preso em coletando", () => {

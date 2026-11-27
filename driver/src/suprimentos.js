@@ -127,6 +127,11 @@ export function criarSuprimentos(opcoes) {
         consumoHora: taxa,
         gastaHora: taxa,
         repoeHora: 0,
+        gastaMin: taxa / 60,
+        repoeMin: 0,
+        saidas: 0,
+        entradas: 0,
+        janelaMin: 0,
         restanteMin: restanteTotal(agora),
         status: taxa > 0 ? "estimado" : "coletando dados",
       };
@@ -137,6 +142,9 @@ export function criarSuprimentos(opcoes) {
     let limite = null;
     let gasto = 0;
     let reposto = 0;
+    let saidas = 0;
+    let entradas = 0;
+    let janelaMax = 0;
     let temLoot = false;
     let temEsgotado = false;
     let temColetando = false;
@@ -149,8 +157,10 @@ export function criarSuprimentos(opcoes) {
       const spent = primeiro && ultimoItem ? h.out - primeiro.out : 0;
       const gained = primeiro && ultimoItem ? h.in - primeiro.in : 0;
       const net = spent - gained;
-      const gastoHora = elapsed > 0 ? spent * 60000 / elapsed : 0;
-      const repoeHora = elapsed > 0 ? gained * 60000 / elapsed : 0;
+      const gastoMin = elapsed > 0 ? spent * 60000 / elapsed : 0;
+      const repoeMin = elapsed > 0 ? gained * 60000 / elapsed : 0;
+      const gastoHora = gastoMin * 60;
+      const repoeHora = repoeMin * 60;
 
       let status;
       let restanteMin = null;
@@ -178,6 +188,9 @@ export function criarSuprimentos(opcoes) {
       quantidade += h.quantidade;
       gasto += gastoHora;
       reposto += repoeHora;
+      saidas += spent;
+      entradas += gained;
+      janelaMax = Math.max(janelaMax, elapsed / 60000);
       itens.push({
         id: h.id,
         nome: h.nome,
@@ -186,6 +199,11 @@ export function criarSuprimentos(opcoes) {
         status: status,
         gastaHora: gastoHora,
         repoeHora: repoeHora,
+        gastaMin: gastoMin,
+        repoeMin: repoeMin,
+        saidas: spent,
+        entradas: gained,
+        janelaMin: elapsed / 60000,
         restanteMin: restanteMin,
       });
     }
@@ -204,6 +222,11 @@ export function criarSuprimentos(opcoes) {
       consumoHora: Math.max(0, gasto - reposto),
       gastaHora: gasto,
       repoeHora: reposto,
+      gastaMin: gasto / 60,
+      repoeMin: reposto / 60,
+      saidas: saidas,
+      entradas: entradas,
+      janelaMin: janelaMax,
       restanteMin: limite,
       status: status,
     };

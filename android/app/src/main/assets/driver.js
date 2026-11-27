@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.9
+// @version      0.9.10
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1848,6 +1848,11 @@ function criarSuprimentos(opcoes) {
         consumoHora: taxa,
         gastaHora: taxa,
         repoeHora: 0,
+        gastaMin: taxa / 60,
+        repoeMin: 0,
+        saidas: 0,
+        entradas: 0,
+        janelaMin: 0,
         restanteMin: restanteTotal(agora),
         status: taxa > 0 ? "estimado" : "coletando dados",
       };
@@ -1858,6 +1863,9 @@ function criarSuprimentos(opcoes) {
     let limite = null;
     let gasto = 0;
     let reposto = 0;
+    let saidas = 0;
+    let entradas = 0;
+    let janelaMax = 0;
     let temLoot = false;
     let temEsgotado = false;
     let temColetando = false;
@@ -1870,8 +1878,10 @@ function criarSuprimentos(opcoes) {
       const spent = primeiro && ultimoItem ? h.out - primeiro.out : 0;
       const gained = primeiro && ultimoItem ? h.in - primeiro.in : 0;
       const net = spent - gained;
-      const gastoHora = elapsed > 0 ? spent * 60000 / elapsed : 0;
-      const repoeHora = elapsed > 0 ? gained * 60000 / elapsed : 0;
+      const gastoMin = elapsed > 0 ? spent * 60000 / elapsed : 0;
+      const repoeMin = elapsed > 0 ? gained * 60000 / elapsed : 0;
+      const gastoHora = gastoMin * 60;
+      const repoeHora = repoeMin * 60;
 
       let status;
       let restanteMin = null;
@@ -1899,6 +1909,9 @@ function criarSuprimentos(opcoes) {
       quantidade += h.quantidade;
       gasto += gastoHora;
       reposto += repoeHora;
+      saidas += spent;
+      entradas += gained;
+      janelaMax = Math.max(janelaMax, elapsed / 60000);
       itens.push({
         id: h.id,
         nome: h.nome,
@@ -1907,6 +1920,11 @@ function criarSuprimentos(opcoes) {
         status: status,
         gastaHora: gastoHora,
         repoeHora: repoeHora,
+        gastaMin: gastoMin,
+        repoeMin: repoeMin,
+        saidas: spent,
+        entradas: gained,
+        janelaMin: elapsed / 60000,
         restanteMin: restanteMin,
       });
     }
@@ -1925,6 +1943,11 @@ function criarSuprimentos(opcoes) {
       consumoHora: Math.max(0, gasto - reposto),
       gastaHora: gasto,
       repoeHora: reposto,
+      gastaMin: gasto / 60,
+      repoeMin: reposto / 60,
+      saidas: saidas,
+      entradas: entradas,
+      janelaMin: janelaMax,
       restanteMin: limite,
       status: status,
     };
@@ -2053,6 +2076,11 @@ function criarAntiBot(opcoes) {
 // está na entidade `J.ents.get("j" + J.miId)`; vida/mana/exp vivos estão em `Hud.yo`
 // (o próprio `Hud.ponerYo` copia os campos para lá).
 function criarPonteNavegador() {
+  // IDs fixos do cliente: 4101-4105 = mana, 4201-4205/4251/4252 = vida.
+  // A tabela `Hud.datos.objetos` dá o nome real; os IDs evitam depender do idioma.
+  const POCOES_MANA = new Set([4101, 4102, 4103, 4104, 4105]);
+  const POCOES_VIDA = new Set([4201, 4202, 4203, 4204, 4205, 4251, 4252]);
+
   function cru() {
     return {
       Red: window.Red,
@@ -2333,9 +2361,17 @@ function criarPonteNavegador() {
       if (!o) return;
       const qtd = Number(o.cant) || 0;
       itens += qtd;
-      const nome = o.nombre || (tabela[o.objeto] && tabela[o.objeto][0]) || "";
+      const idNum = Number(o.objeto);
+      const daTabela = tabela[o.objeto] && tabela[o.objeto][0];
+      const nome = o.nombre || daTabela || ("#" + o.objeto);
       let tipo = null;
-      if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) {
+      if (POCOES_VIDA.has(idNum)) {
+        vida += qtd;
+        tipo = "vida";
+      } else if (POCOES_MANA.has(idNum)) {
+        mana += qtd;
+        tipo = "mana";
+      } else if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) {
         vida += qtd;
         tipo = "vida";
       } else if (/mana potion|poci[oó]n de man[aá]|po[cç][aã]o de man[aá]/i.test(nome)) {
@@ -3854,6 +3890,11 @@ function criarPainel(opcoes) {
           consumoHora: Math.round(supResumo.consumoHora || 0),
           gastaHora: Math.round(supResumo.gastaHora || 0),
           repoeHora: Math.round(supResumo.repoeHora || 0),
+          gastaMin: supResumo.gastaMin || 0,
+          repoeMin: supResumo.repoeMin || 0,
+          saidas: supResumo.saidas || 0,
+          entradas: supResumo.entradas || 0,
+          janelaMin: supResumo.janelaMin || 0,
           restanteMin: supResumo.restanteMin,
           status: supResumo.status,
           detalhes: supResumo.itens,

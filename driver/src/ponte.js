@@ -4,6 +4,11 @@
 // está na entidade `J.ents.get("j" + J.miId)`; vida/mana/exp vivos estão em `Hud.yo`
 // (o próprio `Hud.ponerYo` copia os campos para lá).
 export function criarPonteNavegador() {
+  // IDs fixos do cliente: 4101-4105 = mana, 4201-4205/4251/4252 = vida.
+  // A tabela `Hud.datos.objetos` dá o nome real; os IDs evitam depender do idioma.
+  const POCOES_MANA = new Set([4101, 4102, 4103, 4104, 4105]);
+  const POCOES_VIDA = new Set([4201, 4202, 4203, 4204, 4205, 4251, 4252]);
+
   function cru() {
     return {
       Red: window.Red,
@@ -284,9 +289,17 @@ export function criarPonteNavegador() {
       if (!o) return;
       const qtd = Number(o.cant) || 0;
       itens += qtd;
-      const nome = o.nombre || (tabela[o.objeto] && tabela[o.objeto][0]) || "";
+      const idNum = Number(o.objeto);
+      const daTabela = tabela[o.objeto] && tabela[o.objeto][0];
+      const nome = o.nombre || daTabela || ("#" + o.objeto);
       let tipo = null;
-      if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) {
+      if (POCOES_VIDA.has(idNum)) {
+        vida += qtd;
+        tipo = "vida";
+      } else if (POCOES_MANA.has(idNum)) {
+        mana += qtd;
+        tipo = "mana";
+      } else if (/health potion|poci[oó]n de vida|po[cç][aã]o de vida/i.test(nome)) {
         vida += qtd;
         tipo = "vida";
       } else if (/mana potion|poci[oó]n de man[aá]|po[cç][aã]o de man[aá]/i.test(nome)) {

@@ -81,9 +81,9 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   zera os contadores.
 - **Suprimentos**: poções de vida/mana, itens e ouro do inventário; consumo/hora e tempo
   restante estimado pelo **saldo líquido** (gasto menos loot). O cartão do hub mostra a
-  previsão; **toque nele** para abrir a aba **Suprimentos**, com o cálculo de cada poção
-  (quantidade, gasta/h, loot/h, saldo/h e tempo para acabar). “Itens” é a soma das
-  quantidades na mochila (não os slots).
+  previsão; **toque nele** para abrir a aba **Suprimentos**, com o nome real de cada
+  poção, quantidade restante, quanto **saiu** e **entrou** na janela, taxas por minuto e
+  tempo para acabar. “Itens” é a soma das quantidades na mochila (não os slots).
 - **Repetir tasks e aceitar missões** (checkbox único):
   - no popup **“Task complete”**, **repete a task que acabou de finalizar** (usa o `id` do
     popup), fecha o popup pela função interna e envia

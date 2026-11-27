@@ -113,6 +113,8 @@ class Painel {
     private TextView supTelaValor;
     private TextView supTelaDetalhe;
     private TextView supTelaTaxas;
+    private TextView supTelaAmostra;
+    private TextView supTelaPrimeiro;
     private final Map<String, LinhaSuprimento> linhasSuprimento = new LinkedHashMap<>();
     private String assinaturaSuprimento = "";
     private ScrollView rolagemCorpo;
@@ -305,9 +307,13 @@ class Painel {
         supTelaValor = texto("—", 16f, Color.rgb(242, 198, 91), true);
         supTelaDetalhe = texto(" ", 9.2f, Color.rgb(207, 227, 242), false);
         supTelaTaxas = texto(" ", 8.3f, Color.rgb(159, 179, 194), false);
+        supTelaAmostra = texto(" ", 8.3f, Color.rgb(159, 179, 194), false);
+        supTelaPrimeiro = texto(" ", 8.3f, Color.rgb(111, 138, 156), false);
         LinearLayout resumo = cartao("PREVISÃO TOTAL", supTelaValor, supTelaDetalhe,
                 Color.rgb(242, 198, 91));
         resumo.addView(supTelaTaxas);
+        resumo.addView(supTelaAmostra);
+        resumo.addView(supTelaPrimeiro);
         LinearLayout.LayoutParams pResumo = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         pResumo.topMargin = d(4);
@@ -1859,6 +1865,8 @@ class Painel {
         if (sup == null) {
             supTelaDetalhe.setText("sem leitura");
             supTelaTaxas.setText(" ");
+            supTelaAmostra.setText(" ");
+            supTelaPrimeiro.setText(" ");
             if (listaSuprimentos != null) listaSuprimentos.removeAllViews();
             linhasSuprimento.clear();
             assinaturaSuprimento = "";
@@ -1869,11 +1877,17 @@ class Painel {
         int mana = sup.optInt("mana", 0);
         supTelaDetalhe.setText("V " + vida + " · M " + mana);
 
-        long gasta = Math.round(sup.optDouble("gastaHora", 0));
-        long repoe = Math.round(sup.optDouble("repoeHora", 0));
-        long saldo = Math.max(0, gasta - repoe);
-        supTelaTaxas.setText("gasto " + numero(gasta) + "/h · loot " + numero(repoe)
-                + "/h · saldo " + numero(saldo) + "/h");
+        double gastaMin = sup.optDouble("gastaMin", 0);
+        double repoeMin = sup.optDouble("repoeMin", 0);
+        double saldoMin = Math.max(0, gastaMin - repoeMin);
+        long saidas = Math.round(sup.optDouble("saidas", 0));
+        long entradas = Math.round(sup.optDouble("entradas", 0));
+        int janela = Math.max(0, (int) Math.round(sup.optDouble("janelaMin", 0)));
+        supTelaTaxas.setText("sai " + taxa(gastaMin) + "/min · entra " + taxa(repoeMin)
+                + "/min · saldo " + taxa(saldoMin) + "/min");
+        supTelaAmostra.setText((janela > 0 ? "janela " + janela + " min · " : "")
+                + "saiu " + numero(saidas) + " · entrou " + numero(entradas));
+        supTelaPrimeiro.setText(" ");
 
         JSONArray detalhes = sup.optJSONArray("detalhes");
         StringBuilder assinatura = new StringBuilder();
@@ -1892,31 +1906,59 @@ class Painel {
                 for (int i = 0; i < detalhes.length(); i++) {
                     JSONObject item = detalhes.optJSONObject(i);
                     if (item == null) continue;
-                    String nome = item.optString("nome", "");
-                    if (nome.isEmpty()) nome = "Item " + chaveSuprimento(item);
-                    linhasSuprimento.put(chaveSuprimento(item), criarLinhaSuprimento(nome));
+                    linhasSuprimento.put(chaveSuprimento(item), criarLinhaSuprimento(nomeSuprimento(item)));
                 }
             }
         }
 
         if (detalhes == null) return;
+        String primeiroNome = null;
+        double primeiroMin = Double.MAX_VALUE;
         for (int i = 0; i < detalhes.length(); i++) {
             JSONObject item = detalhes.optJSONObject(i);
             if (item == null) continue;
             LinhaSuprimento linha = linhasSuprimento.get(chaveSuprimento(item));
             if (linha == null) continue;
-            String nome = item.optString("nome", "");
-            if (!nome.isEmpty()) linha.nome.setText(nome);
+            String nome = nomeSuprimento(item);
+            linha.nome.setText(nome);
             linha.valor.setText(valorItemSuprimento(item));
             int qtd = item.optInt("quantidade", 0);
-            String tipo = item.optString("tipo", "");
-            linha.detalhe.setText("qtd " + qtd + (tipo.isEmpty() ? "" : " · " + tipo));
-            long gastoItem = Math.round(item.optDouble("gastaHora", 0));
-            long repoeItem = Math.round(item.optDouble("repoeHora", 0));
-            long saldoItem = Math.max(0, gastoItem - repoeItem);
-            linha.taxas.setText("gasta " + numero(gastoItem) + "/h · loot "
-                    + numero(repoeItem) + "/h · saldo " + numero(saldoItem) + "/h");
+            long saidasItem = Math.round(item.optDouble("saidas", 0));
+            long entradasItem = Math.round(item.optDouble("entradas", 0));
+            linha.detalhe.setText("restam " + numero(qtd) + " · saiu " + numero(saidasItem)
+                    + " · entrou " + numero(entradasItem));
+            double gastaMinItem = item.optDouble("gastaMin",
+                    item.optDouble("gastaHora", 0) / 60);
+            double repoeMinItem = item.optDouble("repoeMin",
+                    item.optDouble("repoeHora", 0) / 60);
+            double saldoMinItem = Math.max(0, gastaMinItem - repoeMinItem);
+            linha.taxas.setText("sai " + taxa(gastaMinItem) + "/min · entra "
+                    + taxa(repoeMinItem) + "/min · saldo " + taxa(saldoMinItem) + "/min");
+            double restante = item.isNull("restanteMin") ? -1 : item.optDouble("restanteMin", -1);
+            if (restante > 0 && restante < primeiroMin) {
+                primeiroMin = restante;
+                primeiroNome = nome;
+            }
         }
+        if (primeiroNome != null) {
+            supTelaPrimeiro.setText("primeiro a acabar: " + primeiroNome
+                    + " (" + tempoSuprimento(primeiroMin) + ")");
+        }
+    }
+
+    private static String nomeSuprimento(JSONObject item) {
+        String nome = item.optString("nome", "");
+        if (!nome.isEmpty()) return nome;
+        String tipo = item.optString("tipo", "");
+        if ("vida".equals(tipo)) return "Poção de vida";
+        if ("mana".equals(tipo)) return "Poção de mana";
+        return "Item " + chaveSuprimento(item);
+    }
+
+    private static String taxa(double porMinuto) {
+        if (!(porMinuto > 0)) return "0";
+        if (porMinuto >= 100) return String.valueOf(Math.round(porMinuto));
+        return String.format(Locale.getDefault(), "%.1f", porMinuto);
     }
 
     /** Stamina do jogo vem em horas decimais; mostra h:mm. */

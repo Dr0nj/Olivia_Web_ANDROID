@@ -33,7 +33,7 @@ New-Item -ItemType Directory -Force -Path $assets | Out-Null
 Copy-Item (Join-Path $raiz 'dist\olivia-web.user.js') (Join-Path $assets 'driver.js') -Force
 
 Write-Host '== limpeza' -ForegroundColor Cyan
-foreach ($pasta in @('classes', 'dex', 'base.apk', 'aligned.apk', 'olivia-web.apk', 'recursos.zip')) {
+foreach ($pasta in @('classes', 'dex', 'base.apk', 'aligned.apk', 'olivia-web.apk', 'recursos.zip', 'gen')) {
   $alvo = Join-Path $out $pasta
   if (Test-Path $alvo) { Remove-Item $alvo -Recurse -Force }
 }
@@ -43,12 +43,15 @@ Write-Host '== recursos e manifesto' -ForegroundColor Cyan
 $versao = (Get-Content (Join-Path $raiz 'package.json') -Raw | ConvertFrom-Json).version
 $recursos = Join-Path $app 'src\main\res'
 $compilados = Join-Path $out 'recursos.zip'
+$gerado = Join-Path $out 'gen'
+New-Item -ItemType Directory -Force -Path $gerado | Out-Null
 $aapt = @(
   'link',
   '-o', (Join-Path $out 'base.apk'),
   '-I', $jar,
   '--manifest', (Join-Path $app 'src\main\AndroidManifest.xml'),
   '-A', $assets,
+  '--java', $gerado,
   '--min-sdk-version', '26',
   '--target-sdk-version', '36',
   '--version-code', '1',
@@ -66,7 +69,8 @@ if (Test-Path $recursos) {
 if ($LASTEXITCODE -ne 0) { throw 'aapt2 link falhou' }
 
 Write-Host '== javac' -ForegroundColor Cyan
-$fontes = Get-ChildItem (Join-Path $app 'src\main\java') -Recurse -Filter *.java | ForEach-Object { $_.FullName }
+$fontes = @(Get-ChildItem (Join-Path $app 'src\main\java') -Recurse -Filter *.java | ForEach-Object { $_.FullName })
+$fontes += @(Get-ChildItem $gerado -Recurse -Filter *.java -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 & (Join-Path $jbr 'bin\javac.exe') -encoding UTF-8 -source 8 -target 8 -Xlint:-options `
   -classpath $jar -d (Join-Path $out 'classes') $fontes
 if ($LASTEXITCODE -ne 0) { throw 'javac falhou' }

@@ -104,8 +104,9 @@ public class MainActivity extends Activity {
                         });
             }
         });
+        int larguraPainel = Math.round(252 * getResources().getDisplayMetrics().density);
         raiz.addView(painel.raiz(), new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                larguraPainel, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(raiz);
         web.loadUrl(JOGO);

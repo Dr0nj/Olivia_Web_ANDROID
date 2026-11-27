@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -88,8 +89,8 @@ class Painel {
 
         raiz = new LinearLayout(ctx);
         raiz.setOrientation(LinearLayout.VERTICAL);
-        raiz.setBackgroundColor(Color.argb(238, 16, 26, 34));
-        raiz.setPadding(d(8), d(5), d(8), d(6));
+        raiz.setBackgroundResource(R.drawable.painel_fundo);
+        raiz.setPadding(d(9), d(6), d(9), d(7));
 
         corpo = new LinearLayout(ctx);
         corpo.setOrientation(LinearLayout.VERTICAL);
@@ -115,6 +116,14 @@ class Painel {
         topo.addView(alternar);
         raiz.addView(topo);
 
+        View divisor = new View(ctx);
+        divisor.setBackgroundColor(Color.argb(110, 58, 127, 154));
+        LinearLayout.LayoutParams pd = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, d(1)));
+        pd.topMargin = d(2);
+        pd.bottomMargin = d(3);
+        raiz.addView(divisor, pd);
+
         raiz.addView(corpo);
 
         telaHub = new LinearLayout(ctx);
@@ -128,7 +137,8 @@ class Painel {
         desafio = texto("desafio 0/0 · parada", 9.5f, Color.rgb(207, 227, 242), false);
         telaHub.addView(numeros);
         grafico = new Grafico(ctx);
-        LinearLayout.LayoutParams pg = new LinearLayout.LayoutParams(d(236), d(46));
+        LinearLayout.LayoutParams pg = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, d(46));
         pg.topMargin = d(3);
         telaHub.addView(grafico, pg);
         telaHub.addView(contadores);
@@ -139,6 +149,7 @@ class Painel {
         LinearLayout desafioLinha = linha();
         desafioLinha.setPadding(0, d(4), 0, 0);
         nao = new CheckBox(ctx);
+        estilizarCaixa(nao);
         nao.setText("Responder «Não»");
         nao.setTextSize(9.5f);
         nao.setTextColor(Color.rgb(223, 231, 238));
@@ -151,6 +162,7 @@ class Painel {
         desafioLinha.addView(nao);
 
         repetir = new CheckBox(ctx);
+        estilizarCaixa(repetir);
         repetir.setText("Repetir");
         repetir.setTextSize(9.5f);
         repetir.setTextColor(Color.rgb(223, 231, 238));
@@ -168,6 +180,7 @@ class Painel {
         LinearLayout autoLinha = linha();
         autoLinha.setPadding(0, d(3), 0, 0);
         autoTarefas = new CheckBox(ctx);
+        estilizarCaixa(autoTarefas);
         autoTarefas.setText("Repetir tasks e aceitar missões");
         autoTarefas.setTextSize(9.5f);
         autoTarefas.setTextColor(Color.rgb(223, 231, 238));
@@ -212,6 +225,7 @@ class Painel {
         tela.addView(texto("Configurações", 10.5f, Color.rgb(207, 227, 242), true));
 
         pausaHumana = new CheckBox(ctx);
+        estilizarCaixa(pausaHumana);
         pausaHumana.setText("Pausas humanas");
         pausaHumana.setTextSize(9.5f);
         pausaHumana.setTextColor(Color.rgb(223, 231, 238));
@@ -247,7 +261,7 @@ class Painel {
 
     View raiz() {
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                d(252), ViewGroup.LayoutParams.WRAP_CONTENT);
         p.gravity = Gravity.TOP | Gravity.START;
         p.setMargins(d(4), d(4), 0, 0);
         raiz.setLayoutParams(p);
@@ -921,18 +935,32 @@ class Painel {
         Button b = new Button(ctx);
         b.setText(t);
         b.setTextSize(9.5f);
+        b.setTextColor(Color.rgb(214, 236, 248));
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setLetterSpacing(0.03f);
         b.setAllCaps(false);
+        b.setBackgroundResource(R.drawable.botao);
         b.setMinHeight(0);
         b.setMinimumHeight(0);
         b.setMinWidth(0);
         b.setMinimumWidth(0);
-        b.setPadding(d(10), d(3), d(10), d(3));
+        b.setPadding(d(11), d(4), d(11), d(4));
+        if (Build.VERSION.SDK_INT >= 21) {
+            b.setStateListAnimator(null);
+            b.setElevation(0f);
+        }
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        p.setMargins(0, 0, d(4), 0);
+        p.setMargins(0, 0, d(5), 0);
         b.setLayoutParams(p);
         b.setOnClickListener(aoClicar);
         return b;
+    }
+
+    private void estilizarCaixa(CheckBox c) {
+        if (Build.VERSION.SDK_INT >= 21) {
+            c.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.rgb(95, 211, 255)));
+        }
     }
 
     private int d(int dp) {

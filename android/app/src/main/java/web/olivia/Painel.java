@@ -59,6 +59,8 @@ class Painel {
     private final LinearLayout raiz;
     private final LinearLayout corpo;
     private final TextView estado;
+    private TextView engrenagem;
+    private View divisor;
     private final TextView numeros;
     private final TextView contadores;
     private final TextView vida;
@@ -98,31 +100,47 @@ class Painel {
         LinearLayout topo = linha();
         TextView titulo = texto("Olivia", 11.5f, Color.rgb(207, 227, 242), true);
         estado = texto("aguardando", 9.5f, Color.rgb(159, 179, 194), false);
-        TextView engrenagem = texto("⚙", 14f, Color.rgb(159, 179, 194), false);
-        engrenagem.setPadding(d(8), 0, d(2), 0);
-        engrenagem.setOnClickListener(v -> abrirConfig());
+        TextView engrenagemLocal = texto("⚙", 14f, Color.rgb(159, 179, 194), false);
+        engrenagemLocal.setPadding(d(8), 0, d(2), 0);
+        engrenagemLocal.setOnClickListener(v -> abrirConfig());
+        engrenagem = engrenagemLocal;
         TextView alternar = texto("≡", 15f, Color.rgb(159, 179, 194), false);
         alternar.setPadding(d(10), 0, d(2), 0);
         alternar.setOnClickListener(v -> {
             recolhido = !recolhido;
             corpo.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (engrenagem != null) engrenagem.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (divisor != null) divisor.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            ViewGroup.LayoutParams params = raiz.getLayoutParams();
+            if (params != null) {
+                if (recolhido) {
+                    params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                } else {
+                    params.width = d(252);
+                }
+                raiz.setLayoutParams(params);
+            }
+            raiz.setPadding(d(recolhido ? 7 : 9), d(recolhido ? 3 : 6),
+                    d(recolhido ? 7 : 9), d(recolhido ? 3 : 7));
         });
         topo.addView(titulo);
         LinearLayout espaco = new LinearLayout(ctx);
         espaco.setLayoutParams(new LinearLayout.LayoutParams(0, 1, 1f));
         topo.addView(espaco);
         topo.addView(estado);
-        topo.addView(engrenagem);
+        topo.addView(engrenagemLocal);
         topo.addView(alternar);
         raiz.addView(topo);
 
-        View divisor = new View(ctx);
-        divisor.setBackgroundColor(Color.argb(110, 58, 127, 154));
+        View divisorLocal = new View(ctx);
+        divisorLocal.setBackgroundColor(Color.argb(110, 58, 127, 154));
         LinearLayout.LayoutParams pd = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, d(1)));
         pd.topMargin = d(2);
         pd.bottomMargin = d(3);
-        raiz.addView(divisor, pd);
+        divisor = divisorLocal;
+        raiz.addView(divisorLocal, pd);
 
         raiz.addView(corpo);
 
@@ -578,6 +596,10 @@ class Painel {
                     && "esperando".equals(s.optJSONObject("rota").optString("situacao", ""))
                     ? "rota · esperando"
                     : modo));
+            // Mantém o cabeçalho coerente com o estado recolhido.
+            estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (engrenagem != null) engrenagem.setVisibility(recolhido ? View.GONE : View.VISIBLE);
+            if (divisor != null) divisor.setVisibility(recolhido ? View.GONE : View.VISIBLE);
 
             if (rota != null) {
                 int total = rota.optInt("total", 0);

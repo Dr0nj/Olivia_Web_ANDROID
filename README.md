@@ -66,6 +66,8 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
 - **Configurações (⚙ no cabeçalho)**: tela separada, como no desktop, com **Pausas
   humanas** (liga/desliga) e **Atraso entre waypoints…** (exato/aleatório, de/até). Volta
   ao hub pelo **Voltar**.
+- **Recolher (≡)**: minimizado fica só **“Olivia ≡”** numa pílula no canto; tocar de novo
+  restaura o painel completo (252 dp na lateral).
 - **Gráfico**: sparkline nativo de **XP/h dos últimos 5 min** no topo do hub (cartão
   arredondado, área com degradê, grade e ponto atual).
 - **Ícone**: o mesmo do Olivia desktop (o boneco no carrinho), em todas as densidades.

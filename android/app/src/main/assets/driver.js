@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.8.4
+// @version      0.9.0
 // @description  Olivia no cliente web do LOW: desafio, rotas, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -550,6 +550,12 @@ function criarSeguidor(opcoes) {
     situacao = "parada";
   }
 
+  function definirAlcance(v) {
+    const n = Number(v);
+    cfg.alcance = Number.isFinite(n) ? Math.max(0, Math.min(8, Math.round(n))) : cfg.alcance;
+    return cfg.alcance;
+  }
+
   function distancia(a, b) {
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   }
@@ -579,6 +585,8 @@ function criarSeguidor(opcoes) {
     seguir,
     parar,
     passo,
+    definirAlcance,
+    alcance: () => cfg.alcance,
     alvo: () => alvoId,
     situacao: () => situacao,
   };
@@ -986,13 +994,14 @@ function criarMotor(opcoes) {
     return total;
   }
 
-  function seguir(id) {
+  function seguir(id, alcance) {
+    if (alcance !== undefined) seguidor.definirAlcance(alcance);
     seguindoId = String(id);
     seguidor.seguir(seguindoId, cfg.agora());
     modo = "seguir";
     ultimoAlvo = "";
     trecho = null;
-    registro.evento("seguir_inicio", { alvo: seguindoId });
+    registro.evento("seguir_inicio", { alvo: seguindoId, sqm: seguidor.alcance() });
     return true;
   }
 
@@ -1451,6 +1460,40 @@ function criarPainel(opcoes) {
   })();
   motor.humano.definirLigado(pausaHumana);
 
+  let reconexaoLigada = (function () {
+    try { return localStorage.getItem("ovw.reconexao") !== "0"; } catch (e) { return true; }
+  })();
+  let reconTentativas = 0;
+  let reconSucessos = 0;
+  let ultimaReconexao = 0;
+  let wsEstavaAberto = false;
+
+  // Mantém a conexão viva quando o WS cai no meio do jogo (mesma ideia do AutoReconnect).
+  function vigiarConexao() {
+    if (!reconexaoLigada) return;
+    const red = window.Red;
+    if (!red || !window.J || !J.enJuego || red.fuera) return;
+    const ws = red.ws;
+    if (ws && ws.readyState === 0) return;
+    const aberto = !!ws && ws.readyState === 1;
+    if (aberto) {
+      if (!wsEstavaAberto && reconTentativas > reconSucessos) {
+        reconSucessos += 1;
+        registro.evento("reconectado", { tentativas: reconTentativas });
+      }
+      wsEstavaAberto = true;
+      return;
+    }
+    wsEstavaAberto = false;
+    if (Date.now() - ultimaReconexao < 15000) return;
+    ultimaReconexao = Date.now();
+    reconTentativas += 1;
+    try {
+      if (typeof red.conectar === "function") red.conectar();
+    } catch (e) { /* tenta de novo no próximo ciclo */ }
+    registro.evento("reconexao_tentativa", { tentativas: reconTentativas });
+  }
+
   const antibot = criarAntiBot({
     ponte: ponte,
     ensaio: (function () {
@@ -1575,6 +1618,7 @@ function criarPainel(opcoes) {
       antibot: { ligado: antibot.ligado(), respondidas: antibot.respondidas() },
       autoTarefas: { ligado: autoTarefas },
       pausaHumana: { ligado: motor.humano.ligado() },
+      reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
       suprimentos: sup
         ? Object.assign({}, sup, {
           consumoHora: Math.round(motor.suprimentos.porHora(agora)),
@@ -1593,14 +1637,15 @@ function criarPainel(opcoes) {
   function aoTarefaCompleta(m) {
     if (!m || !m.id) return;
     if (!autoTarefas) return; // usuário desligou o automático
+    // Envia primeiro (o que importa) e fecha o diálogo em seguida.
+    ponte.enviar({ t: "tarea", id: Number(m.id), accion: "repetir" });
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
       if (ultimo && typeof ultimo._cerrar === "function") ultimo._cerrar();
     } catch (e) {
-      // sem diálogo aberto: segue com o envio
+      // sem diálogo aberto: o envio já foi feito
     }
-    ponte.enviar({ t: "tarea", id: Number(m.id), accion: "repetir" });
     registro.evento("tarefa_completa", { id: m.id, accion: "repetir" });
   }
 
@@ -1608,6 +1653,7 @@ function criarPainel(opcoes) {
   function aoBonus(m) {
     if (!m || !m.id) return;
     if (!autoTarefas) return;
+    ponte.enviar({ t: "bonus", accion: "aceptar", id: Number(m.id) });
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
@@ -1615,8 +1661,48 @@ function criarPainel(opcoes) {
     } catch (e) {
       // sem diálogo aberto
     }
-    ponte.enviar({ t: "bonus", accion: "aceptar", id: Number(m.id) });
     registro.evento("bonus_aceito", { id: m.id });
+  }
+
+  // Hunt Assist: "mais juntos" + alvo próximo = mesma ideia do AreaAttack do desktop
+  // (escolhe o alvo cujo círculo cobre mais monstros, sem trocar por 1).
+  function otimizarArea(segundaTentativa) {
+    const a = window.Asistente;
+    if (!a) {
+      registro.evento("area_indisponivel", {});
+      return false;
+    }
+    if (!a.aa) {
+      ponte.enviar({ t: "huntassist", pedir: true });
+      registro.evento("area_sem_config", {});
+      if (!segundaTentativa) {
+        setTimeout(function () { otimizarArea(true); }, 1500);
+      }
+      return false;
+    }
+    try {
+      a.aa.on = true;
+      a.aa.cerca = true;
+      a.aa.modo = 2; // 2 = mais juntos
+      if (typeof a.mandarAA === "function") {
+        a.mandarAA();
+      } else {
+        const c = a.aa.combo || { runa: 0, on: true };
+        const lista = (a.aa.lista || []).map(function (x) {
+          return x.id + ":" + x.mobs + ":" + x.mana;
+        }).join(",");
+        ponte.enviar({
+          t: "huntassist",
+          aa: (a.aa.on ? "on" : "off") + ";" + (a.aa.cerca ? 1 : 0) + ";" + lista + ";2;" +
+            (c.runa || 0) + ":" + (c.on ? 1 : 0) + ";" + (a.aa.recta ? 1 : 0),
+        });
+      }
+      registro.evento("area_otimizada", { modo: 2, cerca: true });
+      return true;
+    } catch (e) {
+      registro.evento("area_erro", { erro: String(e) });
+      return false;
+    }
   }
 
   function subir() {
@@ -1668,6 +1754,8 @@ function criarPainel(opcoes) {
     if (ligado && motor.modo() === "parada" && rotaAtiva) tentarRetomarRota();
   }, 3000);
 
+  setInterval(vigiarConexao, 5000);
+
   window.Olivia = {
     motor: motor,
     painel: painel,
@@ -1678,7 +1766,7 @@ function criarPainel(opcoes) {
       const o = opcoes || {};
       return motor.iniciarRota(pontos, o.origem || "console", o);
     },
-    seguir: function (id) { return motor.seguir(id); },
+    seguir: function (id, distancia) { return motor.seguir(id, distancia); },
     jogadores: function () { return ponte.jogadores(); },
     autoTarefas: {
       ligado: function () { return autoTarefas; },
@@ -1694,6 +1782,19 @@ function criarPainel(opcoes) {
         motor.humano.definirLigado(pausaHumana);
         try { localStorage.setItem("ovw.pausaHumana", pausaHumana ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
+    },
+    reconexao: {
+      ligado: function () { return reconexaoLigada; },
+      definir: function (v) {
+        reconexaoLigada = !!v;
+        try { localStorage.setItem("ovw.reconexao", reconexaoLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
+      },
+      estado: function () {
+        return { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos };
+      },
+    },
+    area: {
+      otimizar: function () { return otimizarArea(false); },
     },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },

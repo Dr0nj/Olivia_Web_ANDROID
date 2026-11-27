@@ -48,10 +48,12 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   - a volta concluída limpa os pontos pulados e tenta todos de novo;
   - **Atraso…** no painel: pausa entre waypoints, **exata** ou **aleatória** (de/até, em
     segundos), com o `pausaMs` do ponto tendo prioridade.
-- **Seguidor**: segue qualquer jogador (lista os visíveis por nome/ID), para a 1 tile e
-  desiste se o alvo desaparecer por 5 s.
-- **Sessão**: tempo, xp/h (XP absoluto, sem ficar negativo ao subir de nível), pontos,
-  voltas, mortes, paradas, desafios respondidos/janelas.
+- **Seguidor (Seguir jogador)**: página própria com a lista dos jogadores por perto
+  (nome, id e distância) e a **distância em sqm** (0 = mesmo tile, até 8). O personagem
+  acompanha o alvo e para na distância escolhida; desiste se o alvo sumir por 5 s.
+- **Sessão**: “sessão atual” (tempo), xp/h (XP absoluto, sem ficar negativo ao subir de
+  nível), pontos, voltas, mortes, paradas, desafios respondidos/janelas. **Resetar sessão**
+  zera os contadores.
 - **Suprimentos**: poções de vida/mana, itens e ouro do inventário; consumo/hora e tempo
   restante estimado. “Itens” é a soma das quantidades na mochila (não os slots).
 - **Repetir tasks e aceitar missões** (checkbox único):
@@ -63,9 +65,15 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
     repetição e fechava a task);
   - desligado: os popups ficam para você.
 - **Humanização**: pausas longas de 8–20 s a cada 15–25 min (o seguidor não pausa).
-- **Configurações (⚙ no cabeçalho)**: tela separada, como no desktop, com **Pausas
-  humanas** (liga/desliga) e **Atraso entre waypoints…** (exato/aleatório, de/até). Volta
-  ao hub pelo **Voltar**.
+- **Configurações (⚙ no cabeçalho)**: tela separada com os interruptores **Responder
+  «Não»**, **Repetir a rota (laço)**, **Repetir tasks e aceitar missões**, **Pausas
+  humanas**, **Reconectar automaticamente**, **Atraso entre waypoints…** (exato/aleatório)
+  e **Otimizar ataque em área**. **Voltar** retorna ao hub.
+- **Reconexão**: se o WebSocket cair em jogo, tenta `Red.conectar()` a cada 15 s e conta
+  tentativas/sucessos (mesma ideia do AutoReconnect do desktop).
+- **Ataque em área**: **Otimizar** liga o Hunt Assist em modo **“mais juntos”** com alvo
+  próximo, preservando as skills — a mesma lógica do `AreaAttack` do desktop (escolher o
+  alvo cujo círculo cobre mais monstros, sem trocar por 1).
 - **Recolher (≡)**: minimizado fica só **“Olivia ≡”** numa pílula no canto; tocar de novo
   restaura o painel completo (252 dp na lateral).
 - **Arrastar**: segure a faixa do cabeçalho (onde está “Olivia”) e arraste para qualquer
@@ -74,7 +82,7 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   arredondado, área com degradê, grade e ponto atual).
 - **Ícone**: o mesmo do Olivia desktop (o boneco no carrinho), em todas as densidades.
 - **Painel nativo** (fora do DOM, invisível para o detector): estado, contadores, vida,
-  poções, botões Rota/Seguir/Parar, checkboxes “Responder «Não»” e “Repetir”, log de eventos.
+  poções, gráfico, botões **Rota / Seguir jogador / Parar**, **Resetar sessão** e **log**.
 - **Presença**: enquanto anda, o app envia pares de teclas Shift (eventos confiáveis) para
   o cliente ver entrada recente e não acender o bit 64.
 

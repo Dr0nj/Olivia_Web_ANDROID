@@ -99,13 +99,14 @@ export function criarMotor(opcoes) {
     return total;
   }
 
-  function seguir(id) {
+  function seguir(id, alcance) {
+    if (alcance !== undefined) seguidor.definirAlcance(alcance);
     seguindoId = String(id);
     seguidor.seguir(seguindoId, cfg.agora());
     modo = "seguir";
     ultimoAlvo = "";
     trecho = null;
-    registro.evento("seguir_inicio", { alvo: seguindoId });
+    registro.evento("seguir_inicio", { alvo: seguindoId, sqm: seguidor.alcance() });
     return true;
   }
 

@@ -18,6 +18,12 @@ export function criarSeguidor(opcoes) {
     situacao = "parada";
   }
 
+  function definirAlcance(v) {
+    const n = Number(v);
+    cfg.alcance = Number.isFinite(n) ? Math.max(0, Math.min(8, Math.round(n))) : cfg.alcance;
+    return cfg.alcance;
+  }
+
   function distancia(a, b) {
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   }
@@ -47,6 +53,8 @@ export function criarSeguidor(opcoes) {
     seguir,
     parar,
     passo,
+    definirAlcance,
+    alcance: () => cfg.alcance,
     alvo: () => alvoId,
     situacao: () => situacao,
   };

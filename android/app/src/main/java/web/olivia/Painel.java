@@ -37,9 +37,12 @@ class Painel {
         void definirRepetir(boolean repetir);
         void parar();
         void seguir(long id);
+        void seguir(long id, int distancia);
         void ligarAntiBot(boolean ligado);
         void ligarAutoTarefas(boolean ligado);
         void ligarPausaHumana(boolean ligado);
+        void ligarReconexao(boolean ligado);
+        void otimizarArea();
         void zerar();
         void recarregar();
         void listarJogadores(RetornoLista retorno);
@@ -68,13 +71,19 @@ class Painel {
     private final TextView suprimentos;
     private final TextView desafio;
     private final TextView nota;
-    private final CheckBox nao;
-    private final CheckBox repetir;
-    private final CheckBox autoTarefas;
+    private CheckBox nao;
+    private CheckBox repetir;
+    private CheckBox autoTarefas;
     private final java.util.ArrayDeque<String> historico = new java.util.ArrayDeque<>();
     private LinearLayout telaHub;
     private LinearLayout telaRota;
     private LinearLayout telaConfig;
+    private LinearLayout telaSeguir;
+    private LinearLayout listaSeguir;
+    private EditText distanciaSeguir;
+    private TextView alvoSeguir;
+    private long idSeguir = 0;
+    private CheckBox reconexao;
     private EditText campoRota;
     private TextView textoRota;
     private TextView atrasoResumo;
@@ -151,7 +160,7 @@ class Painel {
         telaHub.setOrientation(LinearLayout.VERTICAL);
         corpo.addView(telaHub);
 
-        numeros = texto("tempo 00:00 · xp/h 0", 9.5f, Color.rgb(159, 179, 194), false);
+        numeros = texto("sessão atual 00:00 · xp/h 0", 9.5f, Color.rgb(159, 179, 194), false);
         contadores = texto("pontos 0 · voltas 0 · mortes 0", 9.5f, Color.rgb(159, 179, 194), false);
         vida = texto("nv — · vida — · mana —", 9.5f, Color.rgb(159, 179, 194), false);
         suprimentos = texto("poções —", 9.5f, Color.rgb(159, 179, 194), false);
@@ -167,39 +176,176 @@ class Painel {
         telaHub.addView(suprimentos);
         telaHub.addView(desafio);
 
-        LinearLayout desafioLinha = linha();
-        desafioLinha.setPadding(0, d(4), 0, 0);
+        LinearLayout botoes = linha();
+        botoes.setPadding(0, d(4), 0, 0);
+        botoes.addView(botao("Rota", v -> abrirTelaRota()));
+        botoes.addView(botao("Seguir jogador", v -> abrirTelaSeguir()));
+        botoes.addView(botao("Parar", v -> acoes.parar()));
+        telaHub.addView(botoes);
+
+        LinearLayout rodape = linha();
+        rodape.setPadding(0, d(3), 0, 0);
+        nota = texto("", 8.8f, Color.rgb(111, 138, 156), false);
+        nota.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        nota.setOnClickListener(v -> dialogoLog());
+        rodape.addView(nota);
+        rodape.addView(botao("Resetar sessão", v -> acoes.zerar()));
+        rodape.addView(botao("log", v -> dialogoLog()));
+        telaHub.addView(rodape);
+
+        telaRota = montarTelaRota();
+        corpo.addView(telaRota);
+
+        telaConfig = montarTelaConfig();
+        corpo.addView(telaConfig);
+
+        telaSeguir = montarTelaSeguir();
+        corpo.addView(telaSeguir);
+    }
+
+    private LinearLayout montarTelaSeguir() {
+        LinearLayout tela = new LinearLayout(ctx);
+        tela.setOrientation(LinearLayout.VERTICAL);
+        tela.addView(texto("Seguir jogador", 10.5f, Color.rgb(207, 227, 242), true));
+        tela.addView(texto("Jogadores por perto (toque para escolher):",
+                8.5f, Color.rgb(111, 138, 156), false));
+
+        listaSeguir = new LinearLayout(ctx);
+        listaSeguir.setOrientation(LinearLayout.VERTICAL);
+        android.widget.ScrollView rolagem = new android.widget.ScrollView(ctx);
+        rolagem.addView(listaSeguir);
+        LinearLayout.LayoutParams pr = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, d(104));
+        tela.addView(rolagem, pr);
+
+        alvoSeguir = texto("ninguém escolhido", 9.5f, Color.rgb(159, 179, 194), false);
+        tela.addView(alvoSeguir);
+
+        LinearLayout linhaDist = linha();
+        linhaDist.setPadding(0, d(4), 0, 0);
+        linhaDist.addView(texto("distância", 9.5f, Color.rgb(159, 179, 194), false));
+        distanciaSeguir = new EditText(ctx);
+        distanciaSeguir.setInputType(InputType.TYPE_CLASS_NUMBER);
+        distanciaSeguir.setSingleLine(true);
+        distanciaSeguir.setTextSize(12f);
+        distanciaSeguir.setText(prefs.getInt("seguirSqm", 2) + "");
+        distanciaSeguir.setLayoutParams(new LinearLayout.LayoutParams(d(44), ViewGroup.LayoutParams.WRAP_CONTENT));
+        linhaDist.addView(distanciaSeguir);
+        linhaDist.addView(texto("sqm (0 = mesmo tile)", 9.5f, Color.rgb(159, 179, 194), false));
+        tela.addView(linhaDist);
+
+        LinearLayout acoesSeguir = linha();
+        acoesSeguir.setPadding(0, d(4), 0, 0);
+        acoesSeguir.addView(botao("Atualizar", v -> carregarJogadores()));
+        acoesSeguir.addView(botao("Seguir", v -> seguirSelecionado()));
+        acoesSeguir.addView(botao("Parar", v -> acoes.parar()));
+        tela.addView(acoesSeguir);
+
+        LinearLayout volta = linha();
+        volta.setPadding(0, d(4), 0, 0);
+        volta.addView(botao("Voltar", v -> voltarHub()));
+        tela.addView(volta);
+
+        tela.setVisibility(View.GONE);
+        return tela;
+    }
+
+    private void abrirTelaSeguir() {
+        if (telaSeguir == null) return;
+        telaHub.setVisibility(View.GONE);
+        if (telaRota != null) telaRota.setVisibility(View.GONE);
+        if (telaConfig != null) telaConfig.setVisibility(View.GONE);
+        telaSeguir.setVisibility(View.VISIBLE);
+        carregarJogadores();
+    }
+
+    private void carregarJogadores() {
+        if (listaSeguir == null) return;
+        listaSeguir.removeAllViews();
+        acoes.listarJogadores(json -> {
+            JSONArray lista;
+            try {
+                lista = new JSONArray(json);
+            } catch (Exception e) {
+                lista = new JSONArray();
+            }
+            listaSeguir.removeAllViews();
+            if (lista.length() == 0) {
+                listaSeguir.addView(texto("ninguém por perto", 9f, Color.rgb(111, 138, 156), false));
+                return;
+            }
+            for (int i = 0; i < lista.length(); i += 1) {
+                JSONObject j = lista.optJSONObject(i);
+                if (j == null) continue;
+                final long id = j.optLong("id", 0);
+                final String nome = j.optString("nome", "?");
+                int dist = j.optInt("dist", -1);
+                String rotulo = nome + "  (" + id + (dist >= 0 ? " · " + dist + " sqm" : "") + ")";
+                Button b = botao(rotulo, v -> {
+                    idSeguir = id;
+                    alvoSeguir.setText("alvo: " + nome + " (" + id + ")");
+                    nota("alvo " + nome);
+                });
+                LinearLayout.LayoutParams pb = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                pb.bottomMargin = d(2);
+                b.setLayoutParams(pb);
+                listaSeguir.addView(b);
+            }
+        });
+    }
+
+    private void seguirSelecionado() {
+        if (idSeguir <= 0) {
+            nota("escolha um jogador na lista");
+            return;
+        }
+        int sqm;
+        try {
+            sqm = Integer.parseInt(distanciaSeguir.getText().toString().trim());
+        } catch (Exception e) {
+            sqm = 2;
+        }
+        sqm = Math.max(0, Math.min(8, sqm));
+        prefs.edit().putInt("seguirSqm", sqm).apply();
+        acoes.seguir(idSeguir, sqm);
+        voltarHub();
+        nota("seguindo " + idSeguir + " · " + sqm + " sqm");
+    }
+
+    private LinearLayout montarTelaConfig() {
+        LinearLayout tela = new LinearLayout(ctx);
+        tela.setOrientation(LinearLayout.VERTICAL);
+
+        tela.addView(texto("Configurações", 10.5f, Color.rgb(207, 227, 242), true));
+
         nao = new CheckBox(ctx);
         estilizarCaixa(nao);
-        nao.setText("Responder «Não»");
+        nao.setText("Responder «Não» no anti-bot");
         nao.setTextSize(9.5f);
         nao.setTextColor(Color.rgb(223, 231, 238));
         nao.setChecked(prefs.getBoolean("antibot", true));
-        nao.setPadding(0, 0, 0, 0);
+        nao.setPadding(0, d(2), 0, 0);
         nao.setOnCheckedChangeListener((b, marcado) -> {
             prefs.edit().putBoolean("antibot", marcado).apply();
             acoes.ligarAntiBot(marcado);
         });
-        desafioLinha.addView(nao);
+        tela.addView(nao);
 
         repetir = new CheckBox(ctx);
         estilizarCaixa(repetir);
-        repetir.setText("Repetir");
+        repetir.setText("Repetir a rota (laço)");
         repetir.setTextSize(9.5f);
         repetir.setTextColor(Color.rgb(223, 231, 238));
         repetir.setChecked(prefs.getBoolean("repetir", true));
-        repetir.setPadding(d(8), 0, 0, 0);
+        repetir.setPadding(0, 0, 0, 0);
         repetir.setOnCheckedChangeListener((b, marcado) -> {
             if (prefs.getBoolean("repetir", true) == marcado) return;
             prefs.edit().putBoolean("repetir", marcado).apply();
             acoes.definirRepetir(marcado);
         });
-        desafioLinha.addView(repetir);
+        tela.addView(repetir);
 
-        telaHub.addView(desafioLinha);
-
-        LinearLayout autoLinha = linha();
-        autoLinha.setPadding(0, d(3), 0, 0);
         autoTarefas = new CheckBox(ctx);
         estilizarCaixa(autoTarefas);
         autoTarefas.setText("Repetir tasks e aceitar missões");
@@ -211,39 +357,7 @@ class Painel {
             prefs.edit().putBoolean("autoTarefas", marcado).apply();
             acoes.ligarAutoTarefas(marcado);
         });
-        autoLinha.addView(autoTarefas);
-        telaHub.addView(autoLinha);
-
-        LinearLayout botoes = linha();
-        botoes.setPadding(0, d(4), 0, 0);
-        botoes.addView(botao("Rota", v -> abrirTelaRota()));
-        botoes.addView(botao("Seguir", v -> dialogoSeguir()));
-        botoes.addView(botao("Parar", v -> acoes.parar()));
-        telaHub.addView(botoes);
-
-        LinearLayout rodape = linha();
-        rodape.setPadding(0, d(3), 0, 0);
-        nota = texto("", 8.8f, Color.rgb(111, 138, 156), false);
-        nota.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        nota.setOnClickListener(v -> dialogoLog());
-        rodape.addView(nota);
-        rodape.addView(botao("zerar", v -> acoes.zerar()));
-        rodape.addView(botao("log", v -> dialogoLog()));
-        rodape.addView(botao("web", v -> dialogoRecarregar()));
-        telaHub.addView(rodape);
-
-        telaRota = montarTelaRota();
-        corpo.addView(telaRota);
-
-        telaConfig = montarTelaConfig();
-        corpo.addView(telaConfig);
-    }
-
-    private LinearLayout montarTelaConfig() {
-        LinearLayout tela = new LinearLayout(ctx);
-        tela.setOrientation(LinearLayout.VERTICAL);
-
-        tela.addView(texto("Configurações", 10.5f, Color.rgb(207, 227, 242), true));
+        tela.addView(autoTarefas);
 
         pausaHumana = new CheckBox(ctx);
         estilizarCaixa(pausaHumana);
@@ -261,6 +375,21 @@ class Painel {
         tela.addView(texto("Pausas longas de 8–20 s a cada 15–25 min (não vale no seguir).",
                 8.5f, Color.rgb(111, 138, 156), false));
 
+        reconexao = new CheckBox(ctx);
+        estilizarCaixa(reconexao);
+        reconexao.setText("Reconectar automaticamente");
+        reconexao.setTextSize(9.5f);
+        reconexao.setTextColor(Color.rgb(223, 231, 238));
+        reconexao.setChecked(prefs.getBoolean("reconexao", true));
+        reconexao.setPadding(0, d(2), 0, 0);
+        reconexao.setOnCheckedChangeListener((b, marcado) -> {
+            prefs.edit().putBoolean("reconexao", marcado).apply();
+            acoes.ligarReconexao(marcado);
+        });
+        tela.addView(reconexao);
+        tela.addView(texto("Se o WebSocket cair, tenta reconectar a cada 15 s (mesmo personagem).",
+                8.5f, Color.rgb(111, 138, 156), false));
+
         LinearLayout linhaAtraso = linha();
         linhaAtraso.setPadding(0, d(5), 0, 0);
         linhaAtraso.addView(botao("Atraso entre waypoints…", v -> dialogoAtraso()));
@@ -269,6 +398,16 @@ class Painel {
         linhaAtraso.addView(atrasoResumoConfig);
         tela.addView(linhaAtraso);
         tela.addView(texto("Exato usa o \"de\"; aleatório sorteia entre \"de\" e \"até\".",
+                8.5f, Color.rgb(111, 138, 156), false));
+
+        LinearLayout linhaArea = linha();
+        linhaArea.setPadding(0, d(5), 0, 0);
+        linhaArea.addView(botao("Otimizar ataque em área", v -> {
+            acoes.otimizarArea();
+            nota("área: alvo mais juntos");
+        }));
+        tela.addView(linhaArea);
+        tela.addView(texto("Hunt Assist: ativa área, alvo próximo e modo \"mais juntos\".",
                 8.5f, Color.rgb(111, 138, 156), false));
 
         LinearLayout volta = linha();
@@ -428,6 +567,7 @@ class Painel {
         atualizarTextoRota();
         telaHub.setVisibility(View.GONE);
         if (telaConfig != null) telaConfig.setVisibility(View.GONE);
+        if (telaSeguir != null) telaSeguir.setVisibility(View.GONE);
         telaRota.setVisibility(View.VISIBLE);
     }
 
@@ -435,6 +575,7 @@ class Painel {
         if (telaConfig == null) return;
         telaHub.setVisibility(View.GONE);
         if (telaRota != null) telaRota.setVisibility(View.GONE);
+        if (telaSeguir != null) telaSeguir.setVisibility(View.GONE);
         telaConfig.setVisibility(View.VISIBLE);
         atualizarResumoAtraso();
     }
@@ -443,6 +584,7 @@ class Painel {
         if (telaRota == null) return;
         telaRota.setVisibility(View.GONE);
         if (telaConfig != null) telaConfig.setVisibility(View.GONE);
+        if (telaSeguir != null) telaSeguir.setVisibility(View.GONE);
         telaHub.setVisibility(View.VISIBLE);
     }
 
@@ -722,7 +864,7 @@ class Painel {
                         posAtual = "[[" + pos.optInt("x", 0) + "," + pos.optInt("y", 0) + "]]";
                     }
                 }
-                numeros.setText("tempo " + tempo(sessao.optLong("duracaoMs", 0))
+                numeros.setText("sessão atual " + tempo(sessao.optLong("duracaoMs", 0))
                         + " · xp/h " + String.format(Locale.getDefault(), "%,d", sessao.optLong("xpHora", 0))
                         + onde);
                 contadores.setText("pontos " + sessao.optInt("pontos", 0)
@@ -759,6 +901,12 @@ class Painel {
             if (pausa != null) {
                 boolean lig = pausa.optBoolean("ligado", true);
                 if (pausaHumana.isChecked() != lig) pausaHumana.setChecked(lig);
+            }
+
+            JSONObject recon = s.optJSONObject("reconexao");
+            if (recon != null && reconexao != null) {
+                boolean lig = recon.optBoolean("ligado", true);
+                if (reconexao.isChecked() != lig) reconexao.setChecked(lig);
             }
 
             if (autoTarefasJson != null) {

@@ -166,7 +166,25 @@ Resultado: `Olivia.sessao.snapshot().antiBot` = 1, `janelas` = 1, log `antibot_r
 - Validado no emulador: tela de configurações abriu, checkbox alternou e refletiu no estado,
   gráfico desenhou a curva da sessão.
 
-## 15. Pendências
+## 15. Reorganização e novos recursos (0.9.0)
+
+- **Hub**: Rota / Seguir jogador / Parar; **Resetar sessão** e **log**. Os interruptores
+  saíram do hub para **⚙ Configurações** (anti-bot, repetir rota, tasks, pausas humanas,
+  reconectar, atraso e otimizar área). “web” removido; “tempo” virou “sessão atual”.
+- **Seguir jogador**: página com a lista real (na hora: `Javi (3000066 · 4 sqm)`),
+  distância 0–8 sqm e botões Atualizar/Seguir/Parar. Teste ao vivo: alvo 3000066, sqm 2 →
+  `modo:"seguir"`, `seguir_inicio`, personagem colado no alvo.
+- **Reconexão**: watcher a cada 5 s (tenta a cada 15 s) com contador; estado inicial
+  `{ligado:true,tentativas:0,sucessos:0}`. Não interfere no WS aberto.
+- **Otimizar ataque em área**: enviou/ajustou o Hunt Assist; verificado no cliente:
+  `Asistente.aa = {on:true, cerca:true, modo:2}` e log `area_otimizada`. Modo 2 = “mais
+  juntos”, a mesma escolha do `AreaAttack` (alvo com mais monstros no círculo), preservando
+  a lista de skills.
+- **Repetir task**: a ação agora é enviada **antes** de fechar o diálogo (sem espera);
+  log `tarefa_completa`.
+- `q` continuou **16**.
+
+## 16. Pendências
 
 - Seguidor com segundo personagem real (posicionamento e parada a 1 tile).
 - Morte no mesmo piso → retomada (teste de unidade cobre; falta ao vivo).

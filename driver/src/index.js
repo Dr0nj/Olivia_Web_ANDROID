@@ -7,6 +7,7 @@ import { criarAntiBot } from "./antibot.js";
 import { criarPainel } from "./painel.js";
 import { criarArea } from "./area.js";
 import { CACA_PADRAO } from "./caca.js";
+import { criarRtcSempre } from "./rtc.js";
 
 (function () {
   "use strict";
@@ -19,6 +20,7 @@ import { CACA_PADRAO } from "./caca.js";
   const CHAVE_ROTA = "ovw.rota.estado";
   const CHAVE_SESSAO = "ovw.sessao";
   const CHAVE_CACA = "ovw.caca";
+  const CHAVE_RTC = "ovw.rtcSempre";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
 
   function ler(chave) {
@@ -61,6 +63,18 @@ import { CACA_PADRAO } from "./caca.js";
   const cacaSalvo = ler(CHAVE_CACA);
   if (cacaSalvo) motor.rota.definirCaca(cacaSalvo);
 
+  // RTC/Hunt Assist: usa a mesma API pública do botão RTC do cliente.
+  let rtcSempre = (function () {
+    try { return localStorage.getItem(CHAVE_RTC) === "1"; } catch (e) { return false; }
+  })();
+  const rtc = criarRtcSempre({
+    ligado: rtcSempre,
+    obter: () => window.Asistente,
+    pedir: () => ponte.enviar({ t: "huntassist", pedir: true }),
+    interfaceAberta: () => ponte.interfaceAberta ? ponte.interfaceAberta() : false,
+    log: (nome, dados) => registro.evento(nome, dados),
+  });
+
   let autoTarefas = (function () {
     try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
   })();
@@ -90,6 +104,10 @@ import { CACA_PADRAO } from "./caca.js";
     try { return localStorage.getItem("ovw.seguirOnda") === "1"; } catch (e) { return false; }
   })();
   motor.seguidor.definirOnda(ondaLigada);
+
+  // Automação suspensa quando o jogo sai da tela: nenhum `ir`/skill/área sai
+  // enquanto a página está oculta (bit 512 do Calidad).
+  let suspenso = false;
 
   // Mantém a conexão viva quando o WS cai no meio do jogo (mesma ideia do AutoReconnect).
   function vigiarConexao() {
@@ -237,6 +255,7 @@ import { CACA_PADRAO } from "./caca.js";
       comandando: motor.comandando(),
       rodando: motor.rodando(),
       seguir: motor.seguindoId(),
+      automacao: { suspensa: suspenso },
       rota: {
         total: motor.rota.total(),
         indice: motor.rota.indice(),
@@ -255,6 +274,7 @@ import { CACA_PADRAO } from "./caca.js";
       pausaHumana: { ligado: motor.humano.ligado() },
       reconexao: { ligado: reconexaoLigada, tentativas: reconTentativas, sucessos: reconSucessos },
       area: { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs },
+      rtc: Object.assign({ ligado: rtcSempre }, rtc.estado()),
       onda: {
         ligado: ondaLigada,
         lado: motor.seguidor.lado(),
@@ -350,7 +370,7 @@ import { CACA_PADRAO } from "./caca.js";
   // A cada 700 ms reavalia o alvo com o círculo de raio 2,5 (diâmetro 5) e a
   // histerese do desktop: +2 monstros para trocar e 3 s segurando o escolhido.
   function passoArea() {
-    if (!areaLigada || !ponte.pronto()) return;
+    if (!areaLigada || suspenso || document.hidden === true || !ponte.pronto()) return;
     // Menu de opções/inventário/task aberto: não varre monstros nem troca alvo.
     if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
     const st = ponte.estado();
@@ -373,6 +393,29 @@ import { CACA_PADRAO } from "./caca.js";
     }
   }
 
+  function suspenderAutomacao(motivo) {
+    const estavaRodando = motor.rodando();
+    suspenso = true;
+    motor.encerrar();
+    if (estavaRodando) {
+      registro.evento("automacao_suspensa", { motivo: motivo || "oculto" });
+    }
+  }
+
+  function retomarAutomacao(motivo) {
+    suspenso = false;
+    if (document.hidden === true) return false;
+    if (!ligado || motor.modo() === "parada" || motor.rodando()) return false;
+    motor.retomar();
+    registro.evento("automacao_retomada", { motivo: motivo || "visivel" });
+    return true;
+  }
+
+  function vigiarVisibilidade() {
+    if (document.hidden === true) suspenderAutomacao("oculto");
+    else retomarAutomacao("visivel");
+  }
+
   function subir() {
     if (!ponte.pronto()) return false;
     if (!assinado) assinado = antibot.assinar();
@@ -380,9 +423,18 @@ import { CACA_PADRAO } from "./caca.js";
       assinadoTarefa = ponte.aoReceber("tareaRepetir", aoTarefaCompleta);
       ponte.aoReceber("bonusOferta", aoBonus);
     }
-    if (!ligado) { motor.iniciar(); ligado = true; }
+    if (!ligado) {
+      ligado = true;
+      // Abriu já em segundo plano: não começa a mandar ação até voltar à tela.
+      if (!suspenso && document.hidden !== true) motor.iniciar();
+    }
     return assinado && ligado;
   }
+
+  if (document && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", vigiarVisibilidade);
+  }
+  vigiarVisibilidade();
 
   if (!subir()) {
     const timer = setInterval(function () {
@@ -432,6 +484,11 @@ import { CACA_PADRAO } from "./caca.js";
 
   setInterval(vigiarConexao, 5000);
   setInterval(passoArea, 700);
+  // RTC sempre ligado: verifica devagar e só age quando o cliente desligou.
+  setInterval(function () {
+    if (suspenso || document.hidden === true) return;
+    rtc.passo();
+  }, 2000);
 
   window.Olivia = {
     motor: motor,
@@ -523,10 +580,25 @@ import { CACA_PADRAO } from "./caca.js";
         return { ligado: areaLigada, alvo: areaAlvo, mobs: areaMobs, raio: 2.5 };
       },
     },
+    rtc: {
+      ligado: function () { return rtcSempre; },
+      definir: function (v) {
+        rtcSempre = !!v;
+        rtc.definirLigado(rtcSempre);
+        try { localStorage.setItem(CHAVE_RTC, rtcSempre ? "1" : "0"); } catch (e) { /* sem storage */ }
+        registro.evento("rtc_sempre", { ligado: rtcSempre });
+        if (rtcSempre) rtc.passo();
+        publicar();
+        return rtcSempre;
+      },
+      estado: function () {
+        return Object.assign({ ligado: rtcSempre }, rtc.estado());
+      },
+    },
     parar: function () { motor.parar("console"); },
     modo: function () { return motor.modo(); },
-    suspender: function () { motor.encerrar(); },
-    retomarMotor: function () { motor.retomar(); },
+    suspender: function () { suspenderAutomacao("pedido"); },
+    retomarMotor: function () { retomarAutomacao("pedido"); },
     zerar: function () {
       motor.sessao.reset();
       antibot.zerar();

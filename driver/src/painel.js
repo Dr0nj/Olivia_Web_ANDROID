@@ -194,6 +194,19 @@ export function criarPainel(opcoes) {
     repetir.appendChild(el("span", null, "Repetir a rota"));
     raiz.appendChild(repetir);
 
+    const linhaRtc = linha({ marginTop: "2px" });
+    partes.rtc = document.createElement("input");
+    partes.rtc.type = "checkbox";
+    try { partes.rtc.checked = localStorage.getItem("ovw.rtcSempre") === "1"; } catch (e) { /* sem storage */ }
+    partes.rtc.addEventListener("change", function () {
+      const ligado = partes.rtc.checked;
+      if (window.Olivia && window.Olivia.rtc) window.Olivia.rtc.definir(ligado);
+      atualizar();
+    });
+    linhaRtc.appendChild(partes.rtc);
+    linhaRtc.appendChild(el("span", null, "Manter RTC ligado"));
+    raiz.appendChild(linhaRtc);
+
     // Configuração do ponto de caça (HuntSpotSettings do desktop).
     const secao = document.createElement("details");
     secao.style.marginTop = "6px";
@@ -390,6 +403,11 @@ export function criarPainel(opcoes) {
       + suplemento;
     partes.contadores.textContent = "pontos " + s.pontos + " · voltas " + s.voltas + " · mortes " + s.mortes;
     partes.desafio.textContent = "desafio " + s.antiBot + "/" + s.janelas + " · " + motor.rota.situacao();
+
+    if (partes.rtc && window.Olivia && window.Olivia.rtc) {
+      const ligado = !!window.Olivia.rtc.ligado();
+      if (partes.rtc.checked !== ligado) partes.rtc.checked = ligado;
+    }
 
     const ultimo = motor.log.ultimos(1)[0];
     partes.log.textContent = ultimo ? ultimo.nome : "";

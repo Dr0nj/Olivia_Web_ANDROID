@@ -80,6 +80,7 @@ public class MainActivity extends Activity {
             @Override public void ligarPausaHumana(boolean ligado) { chamarJs("Olivia.pausaHumana.definir(" + ligado + ")"); }
             @Override public void ligarReconexao(boolean ligado) { chamarJs("Olivia.reconexao.definir(" + ligado + ")"); }
             @Override public void ligarArea(boolean ligado) { chamarJs("Olivia.area.definir(" + ligado + ")"); }
+            @Override public void ligarRtcSempre(boolean ligado) { chamarJs("Olivia.rtc.definir(" + ligado + ")"); }
             @Override public void otimizarArea() { chamarJs("Olivia.area.otimizar()"); }
             @Override public void zerar() { chamarJs("Olivia.zerar()"); }
             @Override public void recarregar() { web.reload(); }
@@ -192,7 +193,8 @@ public class MainActivity extends Activity {
         injecoes += 1;
         String js = "window.__OVW_NATIVO=true;\n" + driver
                 + "\ntry{if(window.Olivia&&Olivia.caca)Olivia.caca.definir(" + painel.cacaJson() + ")}catch(e){}"
-                + "\ntry{if(window.Olivia&&Olivia.onda)Olivia.onda.definir(" + painel.ondaAtiva() + ")}catch(e){}";
+                + "\ntry{if(window.Olivia&&Olivia.onda)Olivia.onda.definir(" + painel.ondaAtiva() + ")}catch(e){}"
+                + "\ntry{if(window.Olivia&&Olivia.rtc)Olivia.rtc.definir(" + painel.rtcSempreAtivo() + ")}catch(e){}";
         web.evaluateJavascript(js, null);
         painel.nota("driver injetado (" + injecoes + ")");
     }

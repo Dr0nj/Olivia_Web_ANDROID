@@ -51,6 +51,7 @@ class Painel {
         void ligarPausaHumana(boolean ligado);
         void ligarReconexao(boolean ligado);
         void ligarArea(boolean ligado);
+        void ligarRtcSempre(boolean ligado);
         void otimizarArea();
         void zerar();
         void recarregar();
@@ -116,6 +117,7 @@ class Painel {
     private TextView atrasoResumoConfig;
     private CheckBox pausaHumana;
     private CheckBox area;
+    private CheckBox rtcSempre;
     private String posAtual = "";
     private boolean recolhido = false;
 
@@ -511,6 +513,23 @@ class Painel {
                 + "Hunt Assist (o alvo sozinho do jogo fica desligado).",
                 8.5f, Color.rgb(111, 138, 156), false));
 
+        rtcSempre = new CheckBox(ctx);
+        estilizarCaixa(rtcSempre);
+        rtcSempre.setText("Manter RTC sempre ligado");
+        rtcSempre.setTextSize(9.5f);
+        rtcSempre.setTextColor(Color.rgb(223, 231, 238));
+        rtcSempre.setChecked(prefs.getBoolean("rtcSempre", false));
+        rtcSempre.setPadding(0, d(5), 0, 0);
+        rtcSempre.setOnCheckedChangeListener((b, marcado) -> {
+            prefs.edit().putBoolean("rtcSempre", marcado).apply();
+            acoes.ligarRtcSempre(marcado);
+            nota(marcado ? "RTC será mantido ligado" : "RTC não será mais forçado");
+        });
+        tela.addView(rtcSempre);
+        tela.addView(texto("Se o jogo desligar o RTC, o Olivia liga de novo usando a mesma\n"
+                + "API do botão RTC. Não interfere enquanto o menu do jogo está aberto.",
+                8.5f, Color.rgb(111, 138, 156), false));
+
         LinearLayout ferramentas = linha();
         ferramentas.setPadding(0, d(6), 0, 0);
         ferramentas.addView(botao("Resetar sessão", v -> acoes.zerar()));
@@ -853,6 +872,10 @@ class Painel {
 
     boolean ondaAtiva() {
         return prefs.getBoolean("seguirOnda", false);
+    }
+
+    boolean rtcSempreAtivo() {
+        return prefs.getBoolean("rtcSempre", false);
     }
 
     /** Configuração do ponto de caça, no mesmo formato do driver (caca.js). */
@@ -1242,6 +1265,11 @@ class Painel {
             if (areaJson != null && area != null) {
                 boolean lig = areaJson.optBoolean("ligado", false);
                 if (area.isChecked() != lig) area.setChecked(lig);
+            }
+            JSONObject rtcJson = s.optJSONObject("rtc");
+            if (rtcJson != null && rtcSempre != null) {
+                boolean lig = rtcJson.optBoolean("ligado", false);
+                if (rtcSempre.isChecked() != lig) rtcSempre.setChecked(lig);
             }
 
             if (ondaJson != null && onda != null) {

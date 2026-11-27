@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.4
+**Versão:** 0.9.5
 **Data:** 2026-11-27
-**Commit:** release v0.9.4
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.4
-**APK:** `android/app/build/olivia-web.apk` (133 KB)
+**Commit:** release v0.9.5
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.5
+**APK:** `android/app/build/olivia-web.apk` (137 KB)
 
 ## Validado
 
-- **111 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **117 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -38,6 +38,15 @@
 3. **UI**: botão **Ponto de caça** e dialog **Caça…** no APK; marcação/config no painel
    da página. Configuração fica em `ovw.caca` / prefs `caca*`.
 
+## Mudanças da 0.9.5
+
+1. **RTC sempre ligado** (opcional): religa o Hunt Assist via `Asistente.aa.on` +
+   `Asistente.mandarAA()`. Só age quando o RTC está desligado, respeita menus abertos
+   e entra em backoff após 3 recusas.
+2. **Automação suspensa com a página oculta** (`visibilitychange`): para `ir`, área e
+   demais ações, retomando ao voltar à tela. Logs `automacao_suspensa`/`automacao_retomada`.
+3. Opção no APK e no painel de página; configuração persistente.
+
 ## Mudanças da 0.9.4 (desvio de monstro)
 
 1. **`desvio.js`**: quando o personagem fica ~1 s sem sair do sqm, procura um passo
@@ -54,6 +63,9 @@
    removidos do hub; Rota/Seguir jogador/Iniciar rota/Parar ficam na mesma linha e o
    **Log** fica no rodapé fixo. O painel ocupa toda a lateral útil do celular deitado,
    mantendo o fundo e os contornos arredondados.
+5. **RTC sempre ligado** (opcional): se `Asistente.aa.on` estiver falso, usa
+   `Asistente.mandarAA()` (mesma API do botão RTC) para religar. Respeita menu aberto,
+   não reenvia se já está ligado e entra em backoff após 3 recusas do servidor.
 
 ## Mudanças da 0.9.3 (performance)
 

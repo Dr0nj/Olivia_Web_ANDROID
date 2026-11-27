@@ -78,7 +78,15 @@ function cenario(opcoes) {
   const documento = {
     documentElement: { dataset: {} },
     body: elemento("body"),
+    hidden: false,
+    ouvintes: {},
     createElement: elemento,
+    addEventListener(tipo, fn) {
+      (this.ouvintes[tipo] = this.ouvintes[tipo] || []).push(fn);
+    },
+    emitir(tipo) {
+      (this.ouvintes[tipo] || []).forEach((fn) => fn());
+    },
   };
 
   const antes = {
@@ -111,7 +119,7 @@ function cenario(opcoes) {
     globalThis.localStorage = localStorageAntigo;
   }
 
-  return { janela, Red, J, Hud, enviados, antes, assinantes };
+  return { janela, Red, J, Hud, enviados, antes, assinantes, documento };
 }
 
 // Roda os temporizadores de um período, sem esperar de verdade.
@@ -131,6 +139,25 @@ test("o bundle monta o Olivia e assina o eresBot", () => {
   assert.equal(typeof janela.Olivia.rota, "function");
   assert.equal(janela.Olivia.modo(), "parada");
   assert.equal((assinantes.get("eresBot") || []).length, 1, "não assinou eresBot");
+});
+
+test("suspende quando a página fica oculta e retoma ao voltar", () => {
+  const { janela, documento } = cenario();
+  janela.Olivia.rota([[10, 10]], { origem: "teste" });
+  assert.equal(janela.Olivia.motor.rodando(), true);
+
+  documento.hidden = true;
+  documento.emitir("visibilitychange");
+  assert.equal(janela.Olivia.motor.rodando(), false, "continuou rodando com a página oculta");
+
+  documento.hidden = false;
+  documento.emitir("visibilitychange");
+  assert.equal(janela.Olivia.motor.rodando(), true, "não retomou ao voltar");
+
+  // `retomar` criou um intervalo depois que o cenario restaurou o setInterval
+  // real; encerra explicitamente para o node --test não ficar preso.
+  janela.Olivia.suspender();
+  janela.Olivia.parar();
 });
 
 test("o bundle expõe seguir knight e vira para o alvo na vaga", () => {

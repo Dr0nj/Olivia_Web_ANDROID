@@ -14,6 +14,7 @@ const ordem = [
   "seguidor",
   "area",
   "desvio",
+  "rtc",
   "suprimentos",
   "antibot",
   "ponte",

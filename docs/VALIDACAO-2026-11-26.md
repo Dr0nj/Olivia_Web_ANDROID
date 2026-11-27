@@ -135,6 +135,11 @@ real visível.
   diálogo, o Olivia fechou (`#hud .lo-dlg` = 0), registrou `tarefa_completa` e enviou
   `{t:"tarea", id:999, accion:"repetir"}` (+1 envio). Checkbox **Repetir task completa**
   no painel; desmarcado envia `terminar`.
+
+  > **Correção da 0.9.6:** no cliente atual o popup é `#aviso-tarea`, não `.lo-dlg`. O
+  > `#hud .lo-dlg = 0` acima **não** provava que o popup foi fechado. A 0.9.6 passou a
+  > fechar `#aviso-tarea` por `_quitar` e a só contar a task depois da confirmação no
+  > `Hud.listaTareas`.
 - **Pacote único “Repetir tasks e aceitar missões”** (0.7.0): a coleta foi **removida**.
   Motivo: o `cobrar` da coleta competia com o popup de conclusão e fechava a task em vez de
   repetir. Agora só existe `repetir` (task do popup) e `aceptar` (bônus). Ao vivo, o popup

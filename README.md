@@ -83,8 +83,16 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   restante estimado. “Itens” é a soma das quantidades na mochila (não os slots).
 - **Repetir tasks e aceitar missões** (checkbox único):
   - no popup **“Task complete”**, **repete a task que acabou de finalizar** (usa o `id` do
-    popup), fecha o diálogo pela função interna (`_cerrar`, sem clique sintético) e envia
-    `{t:"tarea", id, accion:"repetir"}`;
+    popup), fecha o popup pela função interna e envia
+    `{t:"tarea", id, accion:"repetir"}` — o mesmo pacote do botão oficial, sem clique
+    sintético;
+  - fecha tanto o aviso compacto atual (`#aviso-tarea`, `_quitar`) quanto o diálogo
+    antigo (`.lo-dlg`, `_cerrar`);
+  - **só conta a task depois que o servidor confirma** que ela voltou para “em andamento”
+    (estado 1/3) ou que o contador de vezes/progresso mudou; se não confirmar em 5 s,
+    registra `tarefa_nao_confirmada` e não infla o painel;
+  - o handler é reassinado depois do `DOMContentLoaded` e no ciclo periódico, porque o
+    cliente substitui `Red.manejadores.tareaRepetir` no `vb03.js`;
   - **aceita a missão bônus** (`{t:"bonus", accion:"aceptar", id}`) e fecha o popup;
   - **não coleta nada**: sem `cobrar` e sem resgatar missão (o resgate competia com a
     repetição e fechava a task);
@@ -157,8 +165,9 @@ driver/src/                   motor JS
   suprimentos.js              consumo de poções
   antibot.js                  resposta “Não” + contadores
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
+  tarefas.js                  repetição de task + confirmação no HUD
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 117 testes (node --test)
+driver/tests/                 138 testes (node --test)
 dist/olivia-web.user.js       userscript gerado (única versão suportada)
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -173,13 +182,13 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 117 testes
+node --test driver\tests                 # 138 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 
 Requisitos do APK: JDK do Android Studio (`JAVA_HOME=...\Android Studio\jbr`),
 `build-tools 36.1.0` e `platforms/android-36`. O APK sai em
-`android/app/build/olivia-web.apk` (~125 KB), `minSdk 26`, `targetSdk 36`.
+`android/app/build/olivia-web.apk` (~137 KB), `minSdk 26`, `targetSdk 36`.
 
 ## Testar
 

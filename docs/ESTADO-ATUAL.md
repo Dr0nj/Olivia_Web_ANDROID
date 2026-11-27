@@ -1,22 +1,40 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.5
+**Versão:** 0.9.6
 **Data:** 2026-11-27
-**Commit:** release v0.9.5
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.5
+**Commit:** release v0.9.6
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.6
 **APK:** `android/app/build/olivia-web.apk` (137 KB)
 
 ## Validado
 
-- **117 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **138 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
   log `area_otimizada`; `q=16`. **Falta validar a troca de alvo com monstros reais.**
 - **Configurações roláveis**: corpo em `ScrollView`; Voltar acessível
   (`uiautomator`: `[1650,967][1777,1023]`).
-- **Repetir task**: ação enviada antes de fechar o diálogo.
-- APK 0.9.1 instalado e aberto no emulador (o emulador foi encerrado sem snapshot).
+- **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
+  depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
+- APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.6 (repetição de task)
+
+1. **Assinatura robusta**: o driver espera o `DOMContentLoaded` (quando os scripts
+   síncronos já rodaram) e usa `garantirHandler` para recolocar
+   `tareaRepetir`/`bonusOferta` sem duplicar. O `vb03.js` substitui o array inteiro de
+   `Red.manejadores.tareaRepetir`; a assinatura feita antes dele não vale.
+2. **Popup correto**: o cliente atual usa `#aviso-tarea` (`_quitar`), não `.lo-dlg`
+   (`_cerrar`). O Olivia fecha o aviso e só cai para `.lo-dlg` se o aviso não existir.
+3. **Confirmação**: a task só entra no contador quando volta para estado 1/3, o
+   contador de vezes aumenta ou o progresso de mortes zera. Sem confirmação em 5 s,
+   registra `tarefa_nao_confirmada` e não conta.
+4. **Sem duplicidade**: a mesma conclusão recebida de novo dentro do prazo é fechada
+   sem um segundo `{t:"tarea", accion:"repetir"}`.
+5. **Falha de envio**: se `Red.enviar` falhar, o aviso fica aberto, não conta e registra
+   `tarefa_repetir_falhou`.
+6. **Menu**: `#aviso-tarea` também pausa os comandos enquanto estiver aberto.
 
 ## Mudanças da 0.9.1
 
@@ -74,8 +92,8 @@
    pesado que segurava o JS por >6 s fazia o app jogar ~100 KB de driver na thread
    principal, piorando o travamento em cascata.
 2. **Pausa de interface**: opções/inventário/RTC/task abertos (`MenuLow`, `Hud.ventanaTipo`,
-   `#ventana`, `#vmenu`, `.lo-dlg`) pausam comandos, presença Shift, varredura de área e
-   persistência. Ao fechar, retoma o mesmo ponto; caça reinicia o relógio.
+   `#ventana`, `#vmenu`, `.lo-dlg`, `#aviso-tarea`) pausam comandos, presença Shift,
+   varredura de área e persistência. Ao fechar, retoma o mesmo ponto; caça reinicia o relógio.
 3. **Menos trabalho periódico**: `passoArea` e `guardarRota` não rodam com menu aberto;
    a presença Shift só é enviada enquanto existe `ir` recente.
 4. **Voltar do segundo plano** (`onPause`/`onResume`) reinicia o prazo do trecho: o tempo

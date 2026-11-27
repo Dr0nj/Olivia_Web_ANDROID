@@ -160,9 +160,20 @@ Para conferir a coleta manual, use o próprio jogo (Tarefas/Missões); o Olivia 
 **Popup “Tarefa completa” (Repetir/Terminar)**
 
 Com **Repetir tasks e aceitar missões** ligado, quando o cliente abre o popup o Olivia
-**repete a task que acabou de finalizar** (usa o `id` do popup), fecha o diálogo pela função
+**repete a task que acabou de finalizar** (usa o `id` do popup), fecha o popup pela função
 interna e envia `{t:"tarea", id, accion:"repetir"}` — sem clique sintético (não acende o
-bit 32). O log mostra `tarefa_completa`.
+bit 32). O cliente atual usa `#aviso-tarea` (`_quitar`); a versão antiga usava `.lo-dlg`
+(`_cerrar`). O log mostra `tarefa_completa` no envio.
+
+A contagem **só sobe depois da confirmação**: a task precisa voltar para estado 1/3, o
+contador de vezes precisa aumentar ou o progresso de mortes precisa zerar. A confirmação
+aparece como `tarefa_repetida`. Se o servidor recusar ou não responder em 5 s, o Olivia
+registra `tarefa_nao_confirmada` e **não** conta. Envio falho registra
+`tarefa_repetir_falhou` e deixa o aviso aberto; conclusão duplicada registra
+`tarefa_repetir_duplicada` e não manda um segundo `repetir`.
+
+Para testar a assinatura robusta, recarregue a página e conclua uma task: o `vb03.js`
+substitui `Red.manejadores.tareaRepetir`; o Olivia precisa continuar repetindo.
 
 O popup de **missão bônus** também é aceito sozinho (`{t:"bonus", accion:"aceptar", id}`) e
 o log mostra `bonus_aceito`. Com o switch desligado, os popups ficam para você.

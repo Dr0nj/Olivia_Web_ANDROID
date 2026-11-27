@@ -8,6 +8,7 @@ import { criarPainel } from "./painel.js";
 import { criarArea } from "./area.js";
 import { CACA_PADRAO } from "./caca.js";
 import { criarRtcSempre } from "./rtc.js";
+import { criarTarefas } from "./tarefas.js";
 
 (function () {
   "use strict";
@@ -78,6 +79,17 @@ import { criarRtcSempre } from "./rtc.js";
   let autoTarefas = (function () {
     try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
   })();
+
+  // Repetição de tasks: envia, fecha o popup certo e só conta após confirmação.
+  const tarefas = criarTarefas({
+    enviar: ponte.enviar,
+    tarefa: ponte.tarefa,
+    fechar: ponte.fecharAvisoTarefa,
+    sessao: motor.sessao,
+    log: registro,
+    ligado: function () { return autoTarefas; },
+    agora: Date.now,
+  });
 
   let pausaHumana = (function () {
     try { return localStorage.getItem("ovw.pausaHumana") !== "0"; } catch (e) { return true; }
@@ -291,31 +303,16 @@ import { criarRtcSempre } from "./rtc.js";
 
   let assinado = false;
   let ligado = false;
-  let assinadoTarefa = false;
-
-  // Popup "Tarefa completa" do cliente: repete a task que acabou de finalizar, fecha o
-  // diálogo e envia o mesmo pacote do botão oficial (sem click sintético, bit 32).
-  function aoTarefaCompleta(m) {
-    if (!m || !m.id) return;
-    if (!autoTarefas) return; // usuário desligou o automático
-    // Envia primeiro (o que importa) e fecha o diálogo em seguida.
-    ponte.enviar({ t: "tarea", id: Number(m.id), accion: "repetir" });
-    motor.sessao.tarefaConcluida();
-    try {
-      const dialogos = document.querySelectorAll("#hud .lo-dlg");
-      const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
-      if (ultimo && typeof ultimo._cerrar === "function") ultimo._cerrar();
-    } catch (e) {
-      // sem diálogo aberto: o envio já foi feito
-    }
-    registro.evento("tarefa_completa", { id: m.id, accion: "repetir" });
-  }
+  let tarefasAgendadas = false;
 
   // Oferta de missão bônus (outro popup do cliente): aceita e fecha.
   function aoBonus(m) {
     if (!m || !m.id) return;
     if (!autoTarefas) return;
-    ponte.enviar({ t: "bonus", accion: "aceptar", id: Number(m.id) });
+    if (!ponte.enviar({ t: "bonus", accion: "aceptar", id: Number(m.id) })) {
+      registro.evento("bonus_falhou", { id: m.id, motivo: "envio" });
+      return;
+    }
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
@@ -324,6 +321,39 @@ import { criarRtcSempre } from "./rtc.js";
       // sem diálogo aberto
     }
     registro.evento("bonus_aceito", { id: m.id });
+  }
+
+  // Assina (ou recoloca) os handlers de task. O cliente troca o array de
+  // `tareaRepetir`/`bonusOferta` no `vb03.js`; por isso nunca confiamos em uma
+  // assinatura única feita antes dos scripts.
+  function garantirTarefas() {
+    if (!ponte.pronto()) return false;
+    const tarefa = ponte.garantirHandler("tareaRepetir", tarefas.aoConcluir);
+    const bonus = ponte.garantirHandler("bonusOferta", aoBonus);
+    const atualiza = ponte.garantirHandler("tarea", tarefas.aoAtualizar);
+    const lista = ponte.garantirHandler("tareas", tarefas.aoAtualizar);
+    return tarefa && bonus && atualiza && lista;
+  }
+
+  function agendarTarefas() {
+    // `interactive`/`complete`: os scripts síncronos (inclusive o vb03.js) já
+    // rodaram. `loading`: espera o DOMContentLoaded, que é depois de todos eles
+    // e antes de imagens/analytics atrasarem o `load`.
+    if (document.readyState !== "loading") {
+      garantirTarefas();
+      return;
+    }
+    if (tarefasAgendadas) return;
+    tarefasAgendadas = true;
+    if (document && typeof document.addEventListener === "function") {
+      document.addEventListener("DOMContentLoaded", garantirTarefas, { once: true });
+    }
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("load", garantirTarefas, { once: true });
+    }
+    if (typeof document.addEventListener !== "function" && typeof window.addEventListener !== "function") {
+      garantirTarefas();
+    }
   }
 
   // A escolha de alvo é NOSSA (círculo de 5 SQM centrado no alvo). Desligamos o
@@ -419,10 +449,7 @@ import { criarRtcSempre } from "./rtc.js";
   function subir() {
     if (!ponte.pronto()) return false;
     if (!assinado) assinado = antibot.assinar();
-    if (!assinadoTarefa) {
-      assinadoTarefa = ponte.aoReceber("tareaRepetir", aoTarefaCompleta);
-      ponte.aoReceber("bonusOferta", aoBonus);
-    }
+    agendarTarefas();
     if (!ligado) {
       ligado = true;
       // Abriu já em segundo plano: não começa a mandar ação até voltar à tela.
@@ -473,6 +500,9 @@ import { criarRtcSempre } from "./rtc.js";
   // Guarda a rota a cada 3 s e tenta retomar depois de mortes e recargas.
   // Com menu aberto não grava: o estado não muda e o localStorage é síncrono.
   setInterval(function () {
+    // O cliente pode substituir o array de handlers depois da primeira
+    // assinatura; recoloca sem duplicar antes de qualquer outra checagem.
+    if (document.readyState !== "loading") garantirTarefas();
     if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
     if (ligado) {
       if (!sessaoTentada) tentarRestaurarSessao();
@@ -484,6 +514,8 @@ import { criarRtcSempre } from "./rtc.js";
 
   setInterval(vigiarConexao, 5000);
   setInterval(passoArea, 700);
+  // Confirmação/expiração das repetições de task (prazo de 5 s).
+  setInterval(function () { tarefas.passo(); }, 1000);
   // RTC sempre ligado: verifica devagar e só age quando o cliente desligou.
   setInterval(function () {
     if (suspenso || document.hidden === true) return;
@@ -538,8 +570,14 @@ import { criarRtcSempre } from "./rtc.js";
       ligado: function () { return autoTarefas; },
       definir: function (v) {
         autoTarefas = !!v;
+        if (!autoTarefas) tarefas.zerar();
         try { localStorage.setItem("ovw.autoTarefas", autoTarefas ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
+    },
+    tarefas: {
+      pendentes: function () { return tarefas.info(); },
+      passo: function (agora) { tarefas.passo(agora); },
+      garantir: function () { return garantirTarefas(); },
     },
     pausaHumana: {
       ligado: function () { return motor.humano.ligado(); },
@@ -602,6 +640,7 @@ import { criarRtcSempre } from "./rtc.js";
     zerar: function () {
       motor.sessao.reset();
       antibot.zerar();
+      tarefas.zerar();
       rotaAtiva = false;
       try {
         localStorage.removeItem(CHAVE_ROTA);

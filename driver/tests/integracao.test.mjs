@@ -38,16 +38,18 @@ function elemento(tag) {
 function cenario(opcoes) {
   const cfg = opcoes || {};
   const enviados = [];
-  const assinantes = new Map();
 
+  // Igual ao cliente: o `Red.al` empilha em `Red.manejadores[tipo]`, e o
+  // `vb03.js` pode substituir o array inteiro depois.
   const Red = {
+    manejadores: {},
     enviar(msg) { enviados.push(msg); return true; },
     al(tipo, fn) {
-      assinantes.set(tipo, (assinantes.get(tipo) || []).concat(fn));
+      (this.manejadores[tipo] = this.manejadores[tipo] || []).push(fn);
       return true;
     },
     emitir(tipo, msg) {
-      (assinantes.get(tipo) || []).forEach((fn) => fn(msg));
+      (this.manejadores[tipo] || []).forEach((fn) => fn(msg));
     },
   };
   const J = {
@@ -59,6 +61,7 @@ function cenario(opcoes) {
     inv: cfg.inv || { mochila: [], botin: [], oro: 0 },
     datos: { objetos: {} },
     yo: null,
+    listaTareas: cfg.tarefas || [],
   };
   const EresBot = { m: null, tocar(k) { enviados.push({ eresbot: k }); } };
 
@@ -67,6 +70,13 @@ function cenario(opcoes) {
     J,
     Hud,
     EresBot,
+    ouvintes: {},
+    addEventListener(tipo, fn) {
+      (this.ouvintes[tipo] = this.ouvintes[tipo] || []).push(fn);
+    },
+    emitir(tipo) {
+      (this.ouvintes[tipo] || []).forEach((fn) => fn());
+    },
     localStorage: cfg.localStorage || {
       dados: {},
       getItem(k) { return k in this.dados ? this.dados[k] : null; },
@@ -75,12 +85,19 @@ function cenario(opcoes) {
     },
   };
 
+  const porId = {};
   const documento = {
     documentElement: { dataset: {} },
     body: elemento("body"),
     hidden: false,
+    readyState: cfg.readyState || "complete",
     ouvintes: {},
+    porId,
+    dialogos: cfg.dialogos || [],
     createElement: elemento,
+    getElementById(id) { return porId[id] || null; },
+    querySelectorAll() { return this.dialogos; },
+    getElementsByClassName() { return []; },
     addEventListener(tipo, fn) {
       (this.ouvintes[tipo] = this.ouvintes[tipo] || []).push(fn);
     },
@@ -119,7 +136,7 @@ function cenario(opcoes) {
     globalThis.localStorage = localStorageAntigo;
   }
 
-  return { janela, Red, J, Hud, enviados, antes, assinantes, documento };
+  return { janela, Red, J, Hud, enviados, antes, manejadores: Red.manejadores, documento, porId };
 }
 
 // Roda os temporizadores de um período, sem esperar de verdade.
@@ -134,11 +151,11 @@ function avancar(ms) {
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test("o bundle monta o Olivia e assina o eresBot", () => {
-  const { janela, assinantes } = cenario();
+  const { janela, manejadores } = cenario();
   assert.ok(janela.Olivia, "window.Olivia ausente");
   assert.equal(typeof janela.Olivia.rota, "function");
   assert.equal(janela.Olivia.modo(), "parada");
-  assert.equal((assinantes.get("eresBot") || []).length, 1, "não assinou eresBot");
+  assert.equal((manejadores.eresBot || []).length, 1, "não assinou eresBot");
 });
 
 test("suspende quando a página fica oculta e retoma ao voltar", () => {
@@ -210,18 +227,138 @@ test("executa rota ponto a ponto e conclui", () => {
   assert.ok(enviados.some((m) => m.t === "parar"), "não mandou parar ao concluir");
 });
 
-test("fecha o popup e repete a task que finalizou", () => {
-  const { Red, enviados } = cenario();
+function avisoFake() {
+  const aviso = elemento("div");
+  aviso.quites = 0;
+  aviso._quitar = function () { this.quites += 1; };
+  return aviso;
+}
+
+test("repete a task, fecha o #aviso-tarea e só conta após confirmação", () => {
+  const { Red, Hud, enviados, porId, janela } = cenario({
+    tarefas: [{ id: 77, estado: 2, vezes: 0, matados: 3, meta: 3 }],
+  });
+  const aviso = avisoFake();
+  porId["aviso-tarea"] = aviso;
 
   Red.emitir("tareaRepetir", { id: 77, titulo: "Task complete", texto: "Rats" });
   const repetir = enviados.find((m) => m.t === "tarea" && m.id === 77);
   assert.ok(repetir, "não enviou a ação da task: " + JSON.stringify(enviados));
   assert.equal(repetir.accion, "repetir");
+  assert.equal(aviso.quites, 1, "não fechou o aviso compacto #aviso-tarea");
+  assert.equal(janela.Olivia.sessao.snapshot().tasks, 0, "contou antes de confirmar");
 
-  Red.emitir("tareaRepetir", { id: 78, titulo: "Task complete" });
-  const outra = enviados.find((m) => m.t === "tarea" && m.id === 78);
-  assert.ok(outra);
-  assert.equal(outra.accion, "repetir");
+  // O servidor aceitou: a task volta para "em andamento" com o progresso zerado.
+  Hud.listaTareas = [{ id: 77, estado: 1, vezes: 0, matados: 0, meta: 3 }];
+  Red.emitir("tarea", { id: 77, estado: 1, vezes: 0, matados: 0, meta: 3 });
+
+  assert.equal(janela.Olivia.sessao.snapshot().tasks, 1, "não contou a repetição confirmada");
+  assert.equal(janela.Olivia.tarefas.pendentes().length, 0);
+  assert.ok(janela.Olivia.log.ultimos(20).some((e) => e.nome === "tarefa_repetida"));
+});
+
+test("não conta quando o servidor não confirma a repetição", () => {
+  const { Red, porId, janela } = cenario({
+    tarefas: [{ id: 88, estado: 2, vezes: 1, matados: 5, meta: 5 }],
+  });
+  porId["aviso-tarea"] = avisoFake();
+
+  Red.emitir("tareaRepetir", { id: 88 });
+  const pendente = janela.Olivia.tarefas.pendentes()[0];
+  assert.ok(pendente, "não registrou a repetição pendente");
+
+  janela.Olivia.tarefas.passo(pendente.deadline + 1);
+
+  assert.equal(janela.Olivia.sessao.snapshot().tasks, 0, "contou uma repetição não confirmada");
+  assert.equal(janela.Olivia.tarefas.pendentes().length, 0);
+  assert.ok(janela.Olivia.log.ultimos(20).some((e) => e.nome === "tarefa_nao_confirmada"));
+});
+
+test("fecha o diálogo antigo .lo-dlg quando não há aviso compacto", () => {
+  let fechou = 0;
+  const dialogo = { _cerrar() { fechou += 1; } };
+  const { Red } = cenario({ dialogos: [dialogo] });
+
+  Red.emitir("tareaRepetir", { id: 100 });
+
+  assert.equal(fechou, 1, "não fechou o diálogo antigo do cliente");
+});
+
+test("se o envio falhar, não conta e deixa o aviso aberto", () => {
+  const { Red, porId, janela } = cenario({
+    tarefas: [{ id: 101, estado: 2, vezes: 0, matados: 3, meta: 3 }],
+  });
+  const aviso = avisoFake();
+  porId["aviso-tarea"] = aviso;
+  const original = Red.enviar;
+  Red.enviar = (m) => (m.t === "tarea" ? false : original(m));
+
+  Red.emitir("tareaRepetir", { id: 101 });
+  Red.enviar = original;
+
+  assert.equal(aviso.quites, 0, "fechou o aviso mesmo com o envio falhando");
+  assert.equal(janela.Olivia.sessao.snapshot().tasks, 0);
+  assert.equal(janela.Olivia.tarefas.pendentes().length, 0);
+  assert.ok(janela.Olivia.log.ultimos(20).some((e) => e.nome === "tarefa_repetir_falhou"));
+});
+
+test("não envia duas vezes a mesma conclusão", () => {
+  const { Red, porId, enviados } = cenario();
+  const aviso = avisoFake();
+  porId["aviso-tarea"] = aviso;
+
+  Red.emitir("tareaRepetir", { id: 102 });
+  Red.emitir("tareaRepetir", { id: 102 });
+
+  const envios = enviados.filter((m) => m.t === "tarea" && m.id === 102);
+  assert.equal(envios.length, 1, "enviou repetir duas vezes para a mesma conclusão");
+  assert.equal(aviso.quites, 2, "não fechou também o popup duplicado");
+});
+
+test("recupera o handler depois que o cliente substitui Red.manejadores.tareaRepetir", () => {
+  const { Red, enviados, janela } = cenario();
+  // Simula o `vb03.js`: troca o array inteiro depois da primeira assinatura.
+  Red.manejadores.tareaRepetir = [function handlerDoCliente() {}];
+
+  janela.Olivia.tarefas.garantir();
+  assert.equal(Red.manejadores.tareaRepetir.length, 2, "não recolocou o handler do Olivia");
+
+  Red.emitir("tareaRepetir", { id: 99 });
+  assert.ok(
+    enviados.some((m) => m.t === "tarea" && m.id === 99),
+    "o handler recolocado não repetiu a task: " + JSON.stringify(enviados),
+  );
+});
+
+test("garantir tarefas não duplica handlers", () => {
+  const { Red, janela } = cenario();
+  const quantos = Red.manejadores.tareaRepetir.length;
+
+  janela.Olivia.tarefas.garantir();
+  janela.Olivia.tarefas.garantir();
+
+  assert.equal(Red.manejadores.tareaRepetir.length, quantos);
+});
+
+test("o ciclo periódico recoloca o handler após uma substituição", () => {
+  const { Red, documento } = cenario();
+  Red.manejadores.tareaRepetir = [function handlerDoCliente() {}];
+  documento.readyState = "complete";
+
+  avancar(3000);
+
+  assert.equal(Red.manejadores.tareaRepetir.length, 2);
+});
+
+test("assina só depois do DOMContentLoaded quando o driver chega antes do cliente", () => {
+  const { Red, documento } = cenario({ readyState: "loading" });
+  assert.equal(Red.manejadores.tareaRepetir, undefined, "assinou antes dos scripts");
+
+  // O cliente carrega o vb03 e substitui o array inteiro antes do DOMContentLoaded.
+  Red.manejadores.tareaRepetir = [function handlerDoCliente() {}];
+  documento.emitir("DOMContentLoaded");
+
+  assert.equal(Red.manejadores.tareaRepetir.length, 2, "não assinou depois dos scripts");
 });
 
 test("aceita oferta de missão bônus e fecha o popup", () => {

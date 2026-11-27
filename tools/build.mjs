@@ -18,6 +18,7 @@ const ordem = [
   "suprimentos",
   "antibot",
   "ponte",
+  "tarefas",
   "motor",
   "painel",
   "index",

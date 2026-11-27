@@ -171,11 +171,74 @@ export function criarPonteNavegador() {
     return enviar({ t: "pc", k: "xd", d: { a: a } });
   }
 
+  // Assina sem duplicar. O cliente pode trocar `Red.manejadores[tipo]` inteiro
+  // (o `vb03.js` faz isso com `tareaRepetir`), então o chamador pode repetir
+  // esta função depois do `load` e a cada ciclo para recolocar o handler.
+  function garantirHandler(tipo, fn) {
+    const w = cru();
+    const manejadores = w.Red && w.Red.manejadores;
+    if (!manejadores || typeof manejadores !== "object") return false;
+    const lista = manejadores[tipo] || (manejadores[tipo] = []);
+    if (!Array.isArray(lista)) return false;
+    if (!lista.includes(fn)) lista.push(fn);
+    return true;
+  }
+
   function aoReceber(tipo, fn) {
+    if (garantirHandler(tipo, fn)) return true;
     const w = cru();
     if (!w.Red || typeof w.Red.al !== "function") return false;
     w.Red.al(tipo, fn);
     return true;
+  }
+
+  // Estado atual da task no HUD do cliente. O `Hud.tareas` substitui o item
+  // inteiro em cada mensagem `tarea`/`tareas`.
+  function tarefa(id) {
+    const w = cru();
+    const lista = w.Hud && Array.isArray(w.Hud.listaTareas) ? w.Hud.listaTareas : null;
+    if (!lista) return null;
+    const alvo = Number(id);
+    for (const t of lista) {
+      if (!t || Number(t.id) !== alvo) continue;
+      const numero = function (v) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      };
+      return {
+        id: alvo,
+        estado: Number.isFinite(Number(t.estado)) ? Number(t.estado) : null,
+        vezes: numero(t.vezes),
+        matados: numero(t.matados),
+        meta: numero(t.meta),
+        nombre: t.nombre || null,
+      };
+    }
+    return null;
+  }
+
+  // O popup atual do `tareaRepetir` é o aviso compacto `#aviso-tarea`; a versão
+  // antiga do cliente usava um `.lo-dlg`. Fecha pelo método interno, sem clique
+  // sintético. Se o aviso existe, não fecha outro diálogo por engano.
+  function fecharAvisoTarefa() {
+    try {
+      if (typeof document.getElementById !== "function") return false;
+      const aviso = document.getElementById("aviso-tarea");
+      if (aviso) {
+        if (typeof aviso._quitar === "function") aviso._quitar();
+        return "aviso";
+      }
+    } catch (e) { /* sem aviso */ }
+    try {
+      if (typeof document.querySelectorAll !== "function") return false;
+      const dialogos = document.querySelectorAll("#hud .lo-dlg");
+      const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
+      if (ultimo && typeof ultimo._cerrar === "function") {
+        ultimo._cerrar();
+        return "dialogo";
+      }
+    } catch (e) { /* sem diálogo */ }
+    return false;
   }
 
   // Mesmo caminho da interface; cai para o envio direto se a janela já mudou.
@@ -260,6 +323,8 @@ export function criarPonteNavegador() {
       if (ventana && ventana.hidden === false) return true;
       const menu = document.getElementById("vmenu");
       if (menu && menu.hidden === false) return true;
+      // Aviso compacto de task completa (versão atual do cliente).
+      if (document.getElementById("aviso-tarea")) return true;
       // Diálogos do próprio cliente (NPC, banco, task, RTC...). A coleção é viva
       // e só o tamanho é consultado; não força layout.
       if (document.getElementsByClassName("lo-dlg").length > 0) return true;
@@ -268,8 +333,8 @@ export function criarPonteNavegador() {
   }
 
   return {
-    pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, caminavel, monstros, objetivo, mirar, girar,
-    interfaceAberta,
+    pronto, estado, entidade, jogadores, enviar, aoReceber, garantirHandler,
+    responderEresBot, inventario, suprimentos, caminavel, monstros, objetivo,
+    mirar, girar, tarefa, fecharAvisoTarefa, interfaceAberta,
   };
 }

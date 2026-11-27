@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.5
+// @version      0.9.6
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1983,11 +1983,74 @@ function criarPonteNavegador() {
     return enviar({ t: "pc", k: "xd", d: { a: a } });
   }
 
+  // Assina sem duplicar. O cliente pode trocar `Red.manejadores[tipo]` inteiro
+  // (o `vb03.js` faz isso com `tareaRepetir`), então o chamador pode repetir
+  // esta função depois do `load` e a cada ciclo para recolocar o handler.
+  function garantirHandler(tipo, fn) {
+    const w = cru();
+    const manejadores = w.Red && w.Red.manejadores;
+    if (!manejadores || typeof manejadores !== "object") return false;
+    const lista = manejadores[tipo] || (manejadores[tipo] = []);
+    if (!Array.isArray(lista)) return false;
+    if (!lista.includes(fn)) lista.push(fn);
+    return true;
+  }
+
   function aoReceber(tipo, fn) {
+    if (garantirHandler(tipo, fn)) return true;
     const w = cru();
     if (!w.Red || typeof w.Red.al !== "function") return false;
     w.Red.al(tipo, fn);
     return true;
+  }
+
+  // Estado atual da task no HUD do cliente. O `Hud.tareas` substitui o item
+  // inteiro em cada mensagem `tarea`/`tareas`.
+  function tarefa(id) {
+    const w = cru();
+    const lista = w.Hud && Array.isArray(w.Hud.listaTareas) ? w.Hud.listaTareas : null;
+    if (!lista) return null;
+    const alvo = Number(id);
+    for (const t of lista) {
+      if (!t || Number(t.id) !== alvo) continue;
+      const numero = function (v) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      };
+      return {
+        id: alvo,
+        estado: Number.isFinite(Number(t.estado)) ? Number(t.estado) : null,
+        vezes: numero(t.vezes),
+        matados: numero(t.matados),
+        meta: numero(t.meta),
+        nombre: t.nombre || null,
+      };
+    }
+    return null;
+  }
+
+  // O popup atual do `tareaRepetir` é o aviso compacto `#aviso-tarea`; a versão
+  // antiga do cliente usava um `.lo-dlg`. Fecha pelo método interno, sem clique
+  // sintético. Se o aviso existe, não fecha outro diálogo por engano.
+  function fecharAvisoTarefa() {
+    try {
+      if (typeof document.getElementById !== "function") return false;
+      const aviso = document.getElementById("aviso-tarea");
+      if (aviso) {
+        if (typeof aviso._quitar === "function") aviso._quitar();
+        return "aviso";
+      }
+    } catch (e) { /* sem aviso */ }
+    try {
+      if (typeof document.querySelectorAll !== "function") return false;
+      const dialogos = document.querySelectorAll("#hud .lo-dlg");
+      const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
+      if (ultimo && typeof ultimo._cerrar === "function") {
+        ultimo._cerrar();
+        return "dialogo";
+      }
+    } catch (e) { /* sem diálogo */ }
+    return false;
   }
 
   // Mesmo caminho da interface; cai para o envio direto se a janela já mudou.
@@ -2072,6 +2135,8 @@ function criarPonteNavegador() {
       if (ventana && ventana.hidden === false) return true;
       const menu = document.getElementById("vmenu");
       if (menu && menu.hidden === false) return true;
+      // Aviso compacto de task completa (versão atual do cliente).
+      if (document.getElementById("aviso-tarea")) return true;
       // Diálogos do próprio cliente (NPC, banco, task, RTC...). A coleção é viva
       // e só o tamanho é consultado; não força layout.
       if (document.getElementsByClassName("lo-dlg").length > 0) return true;
@@ -2080,9 +2145,147 @@ function criarPonteNavegador() {
   }
 
   return {
-    pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
-    inventario, suprimentos, caminavel, monstros, objetivo, mirar, girar,
-    interfaceAberta,
+    pronto, estado, entidade, jogadores, enviar, aoReceber, garantirHandler,
+    responderEresBot, inventario, suprimentos, caminavel, monstros, objetivo,
+    mirar, girar, tarefa, fecharAvisoTarefa, interfaceAberta,
+  };
+}
+
+
+// Repetição de tasks: envia o mesmo pacote do botão oficial do cliente e só
+// conta a task depois que o servidor confirma que ela voltou a ficar ativa.
+//
+// O cliente publica o popup `tareaRepetir`, mas o array de handlers pode ser
+// substituído por outro script do jogo. Quem assina (`index.js`) usa
+// `ponte.garantirHandler` e recoloca este handler sem duplicar.
+function criarTarefas(opcoes) {
+  const cfg = Object.assign({
+    confirmarMs: 5000,
+    agora: Date.now,
+  }, opcoes || {});
+  const pendentes = new Map();
+
+  function ligado() {
+    return typeof cfg.ligado === "function" ? !!cfg.ligado() : true;
+  }
+
+  function logar(nome, dados) {
+    if (!cfg.log || typeof cfg.log.evento !== "function") return;
+    try { cfg.log.evento(nome, dados); } catch (e) { /* log nunca derruba a task */ }
+  }
+
+  function lerTarefa(id) {
+    if (typeof cfg.tarefa !== "function") return null;
+    try { return cfg.tarefa(id) || null; } catch (e) { return null; }
+  }
+
+  function fechar() {
+    if (typeof cfg.fechar !== "function") return false;
+    try { return cfg.fechar(); } catch (e) { return false; }
+  }
+
+  function enviar(msg) {
+    if (typeof cfg.enviar !== "function") return false;
+    try { return cfg.enviar(msg) !== false; } catch (e) { return false; }
+  }
+
+  // A task repetida volta para "em andamento" (1) ou "falta o chefe" (3), ou
+  // então o contador de vezes sobe / o progresso de mortes zera.
+  function confirmou(antes, depois) {
+    if (!depois) return false;
+    if (!antes) return depois.estado === 1 || depois.estado === 3;
+    if (antes.estado === 2 && (depois.estado === 1 || depois.estado === 3)) return true;
+    if (depois.vezes > antes.vezes) return true;
+    if (depois.matados < antes.matados) return true;
+    return false;
+  }
+
+  function contar(id, antes, depois) {
+    pendentes.delete(id);
+    if (cfg.sessao && typeof cfg.sessao.tarefaConcluida === "function") {
+      cfg.sessao.tarefaConcluida();
+    }
+    logar("tarefa_repetida", { id: id, antes: antes, depois: depois });
+  }
+
+  // Popup "Tarefa completa": uma ação por conclusão. Se a mesma conclusão
+  // chegar de novo enquanto a anterior não confirmou, não envia outra.
+  function aoConcluir(m) {
+    if (!m || !m.id) return;
+    if (!ligado()) return;
+    const id = Number(m.id);
+    if (!Number.isFinite(id) || id <= 0) return;
+
+    const agora = cfg.agora();
+    const pendente = pendentes.get(id);
+    if (pendente && agora < pendente.deadline) {
+      const fechou = fechar();
+      logar("tarefa_repetir_duplicada", { id: id, fechou: fechou });
+      return;
+    }
+
+    const antes = lerTarefa(id);
+    pendentes.set(id, {
+      id: id,
+      antes: antes,
+      em: agora,
+      deadline: agora + cfg.confirmarMs,
+    });
+
+    if (!enviar({ t: "tarea", id: id, accion: "repetir" })) {
+      pendentes.delete(id);
+      logar("tarefa_repetir_falhou", { id: id, motivo: "envio" });
+      return;
+    }
+
+    const fechou = fechar();
+    logar("tarefa_completa", { id: id, accion: "repetir", antes: antes, fechou: fechou });
+  }
+
+  // `tarea` e `tareas` chegam depois da repetição. O `Hud` do cliente já
+  // atualizou a lista quando este handler roda (ele assina antes do Olivia).
+  function aoAtualizar() {
+    if (!pendentes.size) return;
+    for (const [id, p] of Array.from(pendentes.entries())) {
+      const depois = lerTarefa(id);
+      if (confirmou(p.antes, depois)) contar(id, p.antes, depois);
+    }
+  }
+
+  // Rede de segurança: confirma pelo estado atual e, se o prazo passou sem
+  // confirmação, não conta. O painel nunca mostra uma repetição que não houve.
+  function passo(agora) {
+    if (!pendentes.size) return;
+    const t = Number.isFinite(agora) ? agora : cfg.agora();
+    for (const [id, p] of Array.from(pendentes.entries())) {
+      if (t < p.deadline) continue;
+      const depois = lerTarefa(id);
+      if (confirmou(p.antes, depois)) {
+        contar(id, p.antes, depois);
+        continue;
+      }
+      pendentes.delete(id);
+      logar("tarefa_nao_confirmada", { id: id, antes: p.antes, depois: depois });
+    }
+  }
+
+  function zerar() {
+    pendentes.clear();
+  }
+
+  function info() {
+    return Array.from(pendentes.values()).map(function (p) {
+      return { id: p.id, em: p.em, deadline: p.deadline, antes: p.antes };
+    });
+  }
+
+  return {
+    aoConcluir,
+    aoAtualizar,
+    passo,
+    zerar,
+    info,
+    confirmou,
   };
 }
 
@@ -3110,6 +3313,17 @@ function criarPainel(opcoes) {
     try { return localStorage.getItem("ovw.autoTarefas") !== "0"; } catch (e) { return true; }
   })();
 
+  // Repetição de tasks: envia, fecha o popup certo e só conta após confirmação.
+  const tarefas = criarTarefas({
+    enviar: ponte.enviar,
+    tarefa: ponte.tarefa,
+    fechar: ponte.fecharAvisoTarefa,
+    sessao: motor.sessao,
+    log: registro,
+    ligado: function () { return autoTarefas; },
+    agora: Date.now,
+  });
+
   let pausaHumana = (function () {
     try { return localStorage.getItem("ovw.pausaHumana") !== "0"; } catch (e) { return true; }
   })();
@@ -3322,31 +3536,16 @@ function criarPainel(opcoes) {
 
   let assinado = false;
   let ligado = false;
-  let assinadoTarefa = false;
-
-  // Popup "Tarefa completa" do cliente: repete a task que acabou de finalizar, fecha o
-  // diálogo e envia o mesmo pacote do botão oficial (sem click sintético, bit 32).
-  function aoTarefaCompleta(m) {
-    if (!m || !m.id) return;
-    if (!autoTarefas) return; // usuário desligou o automático
-    // Envia primeiro (o que importa) e fecha o diálogo em seguida.
-    ponte.enviar({ t: "tarea", id: Number(m.id), accion: "repetir" });
-    motor.sessao.tarefaConcluida();
-    try {
-      const dialogos = document.querySelectorAll("#hud .lo-dlg");
-      const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
-      if (ultimo && typeof ultimo._cerrar === "function") ultimo._cerrar();
-    } catch (e) {
-      // sem diálogo aberto: o envio já foi feito
-    }
-    registro.evento("tarefa_completa", { id: m.id, accion: "repetir" });
-  }
+  let tarefasAgendadas = false;
 
   // Oferta de missão bônus (outro popup do cliente): aceita e fecha.
   function aoBonus(m) {
     if (!m || !m.id) return;
     if (!autoTarefas) return;
-    ponte.enviar({ t: "bonus", accion: "aceptar", id: Number(m.id) });
+    if (!ponte.enviar({ t: "bonus", accion: "aceptar", id: Number(m.id) })) {
+      registro.evento("bonus_falhou", { id: m.id, motivo: "envio" });
+      return;
+    }
     try {
       const dialogos = document.querySelectorAll("#hud .lo-dlg");
       const ultimo = dialogos.length ? dialogos[dialogos.length - 1] : null;
@@ -3355,6 +3554,39 @@ function criarPainel(opcoes) {
       // sem diálogo aberto
     }
     registro.evento("bonus_aceito", { id: m.id });
+  }
+
+  // Assina (ou recoloca) os handlers de task. O cliente troca o array de
+  // `tareaRepetir`/`bonusOferta` no `vb03.js`; por isso nunca confiamos em uma
+  // assinatura única feita antes dos scripts.
+  function garantirTarefas() {
+    if (!ponte.pronto()) return false;
+    const tarefa = ponte.garantirHandler("tareaRepetir", tarefas.aoConcluir);
+    const bonus = ponte.garantirHandler("bonusOferta", aoBonus);
+    const atualiza = ponte.garantirHandler("tarea", tarefas.aoAtualizar);
+    const lista = ponte.garantirHandler("tareas", tarefas.aoAtualizar);
+    return tarefa && bonus && atualiza && lista;
+  }
+
+  function agendarTarefas() {
+    // `interactive`/`complete`: os scripts síncronos (inclusive o vb03.js) já
+    // rodaram. `loading`: espera o DOMContentLoaded, que é depois de todos eles
+    // e antes de imagens/analytics atrasarem o `load`.
+    if (document.readyState !== "loading") {
+      garantirTarefas();
+      return;
+    }
+    if (tarefasAgendadas) return;
+    tarefasAgendadas = true;
+    if (document && typeof document.addEventListener === "function") {
+      document.addEventListener("DOMContentLoaded", garantirTarefas, { once: true });
+    }
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("load", garantirTarefas, { once: true });
+    }
+    if (typeof document.addEventListener !== "function" && typeof window.addEventListener !== "function") {
+      garantirTarefas();
+    }
   }
 
   // A escolha de alvo é NOSSA (círculo de 5 SQM centrado no alvo). Desligamos o
@@ -3450,10 +3682,7 @@ function criarPainel(opcoes) {
   function subir() {
     if (!ponte.pronto()) return false;
     if (!assinado) assinado = antibot.assinar();
-    if (!assinadoTarefa) {
-      assinadoTarefa = ponte.aoReceber("tareaRepetir", aoTarefaCompleta);
-      ponte.aoReceber("bonusOferta", aoBonus);
-    }
+    agendarTarefas();
     if (!ligado) {
       ligado = true;
       // Abriu já em segundo plano: não começa a mandar ação até voltar à tela.
@@ -3504,6 +3733,9 @@ function criarPainel(opcoes) {
   // Guarda a rota a cada 3 s e tenta retomar depois de mortes e recargas.
   // Com menu aberto não grava: o estado não muda e o localStorage é síncrono.
   setInterval(function () {
+    // O cliente pode substituir o array de handlers depois da primeira
+    // assinatura; recoloca sem duplicar antes de qualquer outra checagem.
+    if (document.readyState !== "loading") garantirTarefas();
     if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
     if (ligado) {
       if (!sessaoTentada) tentarRestaurarSessao();
@@ -3515,6 +3747,8 @@ function criarPainel(opcoes) {
 
   setInterval(vigiarConexao, 5000);
   setInterval(passoArea, 700);
+  // Confirmação/expiração das repetições de task (prazo de 5 s).
+  setInterval(function () { tarefas.passo(); }, 1000);
   // RTC sempre ligado: verifica devagar e só age quando o cliente desligou.
   setInterval(function () {
     if (suspenso || document.hidden === true) return;
@@ -3569,8 +3803,14 @@ function criarPainel(opcoes) {
       ligado: function () { return autoTarefas; },
       definir: function (v) {
         autoTarefas = !!v;
+        if (!autoTarefas) tarefas.zerar();
         try { localStorage.setItem("ovw.autoTarefas", autoTarefas ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
+    },
+    tarefas: {
+      pendentes: function () { return tarefas.info(); },
+      passo: function (agora) { tarefas.passo(agora); },
+      garantir: function () { return garantirTarefas(); },
     },
     pausaHumana: {
       ligado: function () { return motor.humano.ligado(); },
@@ -3633,6 +3873,7 @@ function criarPainel(opcoes) {
     zerar: function () {
       motor.sessao.reset();
       antibot.zerar();
+      tarefas.zerar();
       rotaAtiva = false;
       try {
         localStorage.removeItem(CHAVE_ROTA);

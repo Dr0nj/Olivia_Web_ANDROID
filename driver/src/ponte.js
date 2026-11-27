@@ -11,6 +11,7 @@ export function criarPonteNavegador() {
       Hud: window.Hud,
       EresBot: window.EresBot,
       Pelea: window.Pelea,
+      MenuLow: window.MenuLow,
     };
   }
 
@@ -239,8 +240,31 @@ export function criarPonteNavegador() {
     }
   }
 
+  // Interface do jogo aberta (inventário, opções, task, RTC etc). É só leitura de
+  // estado/DOM: não envolve função nenhuma do cliente e não altera a página.
+  // O objetivo é parar o laço enquanto o jogador mexe na interface e evitar que o
+  // watchdog reinjete o driver durante um menu pesado.
+  function interfaceAberta() {
+    const w = cru();
+    try {
+      if (w.MenuLow && typeof w.MenuLow.abierto === "function" && w.MenuLow.abierto()) return true;
+    } catch (e) { /* sem menu */ }
+    try {
+      if (w.Hud && w.Hud.ventanaTipo) return true;
+      const ventana = document.getElementById("ventana");
+      if (ventana && ventana.hidden === false) return true;
+      const menu = document.getElementById("vmenu");
+      if (menu && menu.hidden === false) return true;
+      // Diálogos do próprio cliente (NPC, banco, task, RTC...). A coleção é viva
+      // e só o tamanho é consultado; não força layout.
+      if (document.getElementsByClassName("lo-dlg").length > 0) return true;
+    } catch (e) { /* DOM ainda carregando */ }
+    return false;
+  }
+
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
     inventario, suprimentos, caminavel, monstros, objetivo, mirar, girar,
+    interfaceAberta,
   };
 }

@@ -167,6 +167,14 @@ bit 32). O log mostra `tarefa_completa`.
 O popup de **missão bônus** também é aceito sozinho (`{t:"bonus", accion:"aceptar", id}`) e
 o log mostra `bonus_aceito`. Com o switch desligado, os popups ficam para você.
 
+**Menus e performance (opções/RTC/task)**
+
+Com uma rota rodando, abra **Opções**, a configuração do **RTC** ou a janela de **task**.
+Esperado: o painel mostra `menu do jogo · pausado`; o log registra `pausa_interface`; o
+personagem não anda e não recebe Shift. Ao fechar, `retomada_interface` e a rota continua
+do mesmo ponto. Se o menu ficar pesado, o APK **não reinjeta** o driver (o watchdog espera
+15 s e faz uma sonda barata antes).
+
 ## 5. Anti-bot em ensaio (2 min) — e o teste real
 
 Ensaio (não envia):

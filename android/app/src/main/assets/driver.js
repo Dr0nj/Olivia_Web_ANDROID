@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.2
+// @version      0.9.3
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -783,6 +783,22 @@ function criarRota(opcoes) {
     return caca.configurar(config);
   }
 
+  // Pausa por interface do jogo: o tempo parado não conta como travamento nem
+  // como "preso"; a caça recomeça o relógio no ponto em que estava.
+  function retomarAposInterface(agora) {
+    if (situacao === "cacando") {
+      const info = caca.info(agora);
+      caca.iniciar(agora, { noPonto: info.noPonto, motivo: "retomando após interface" });
+    }
+    pausaAte = 0;
+    desde = agora;
+    limite = null;
+    ultimaPos = null;
+    posMovel = null;
+    mudouEm = agora;
+    finalizando = false;
+  }
+
   function cacaInfo(agora) {
     const quando = Number.isFinite(agora) ? agora : 0;
     return Object.assign({}, caca.info(quando), {
@@ -914,6 +930,7 @@ function criarRota(opcoes) {
     definirAtraso,
     atrasoConfig: () => Object.assign({}, atraso),
     definirCaca,
+    retomarAposInterface,
     cacaConfig: () => caca.config(),
     cacaInfo,
     repetir,
@@ -1540,6 +1557,7 @@ function criarPonteNavegador() {
       Hud: window.Hud,
       EresBot: window.EresBot,
       Pelea: window.Pelea,
+      MenuLow: window.MenuLow,
     };
   }
 
@@ -1768,9 +1786,32 @@ function criarPonteNavegador() {
     }
   }
 
+  // Interface do jogo aberta (inventário, opções, task, RTC etc). É só leitura de
+  // estado/DOM: não envolve função nenhuma do cliente e não altera a página.
+  // O objetivo é parar o laço enquanto o jogador mexe na interface e evitar que o
+  // watchdog reinjete o driver durante um menu pesado.
+  function interfaceAberta() {
+    const w = cru();
+    try {
+      if (w.MenuLow && typeof w.MenuLow.abierto === "function" && w.MenuLow.abierto()) return true;
+    } catch (e) { /* sem menu */ }
+    try {
+      if (w.Hud && w.Hud.ventanaTipo) return true;
+      const ventana = document.getElementById("ventana");
+      if (ventana && ventana.hidden === false) return true;
+      const menu = document.getElementById("vmenu");
+      if (menu && menu.hidden === false) return true;
+      // Diálogos do próprio cliente (NPC, banco, task, RTC...). A coleção é viva
+      // e só o tamanho é consultado; não força layout.
+      if (document.getElementsByClassName("lo-dlg").length > 0) return true;
+    } catch (e) { /* DOM ainda carregando */ }
+    return false;
+  }
+
   return {
     pronto, estado, entidade, jogadores, enviar, aoReceber, responderEresBot,
     inventario, suprimentos, caminavel, monstros, objetivo, mirar, girar,
+    interfaceAberta,
   };
 }
 
@@ -1808,6 +1849,8 @@ function criarMotor(opcoes) {
   let trecho = null; // trecho atual: { destino, alvo }
   let pisoRota = null;
   let emCaca = false;
+  // Interface aberta: pausa comandos e atualizações pesadas até o jogador fechar.
+  let pausaInterface = false;
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -1860,6 +1903,7 @@ function criarMotor(opcoes) {
     pisoRota = pos && Number.isInteger(pos.z) ? pos.z : null;
     ultimoMotivoParada = null;
     emCaca = false;
+    pausaInterface = false;
     const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
@@ -1885,6 +1929,7 @@ function criarMotor(opcoes) {
     ultimoAlvo = "";
     trecho = null;
     ultimoGiro = 0;
+    pausaInterface = false;
     registro.evento("seguir_inicio", {
       alvo: seguindoId,
       sqm: seguidor.alcanceEfetivo(),
@@ -1912,6 +1957,8 @@ function criarMotor(opcoes) {
     ultimoGiro = 0;
     pisoRota = null;
     emCaca = false;
+    pausaInterface = false;
+    ultimoEnvio = 0;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
     sessao.parada();
@@ -1936,6 +1983,32 @@ function criarMotor(opcoes) {
       sessao.morte();
       parar(!st.emJogo ? "fora" : "morto");
       return;
+    }
+
+    // Menu/inventário/task/RTC abertos: para os comandos e não compete com a
+    // interface do jogo. Ao fechar, a rota retoma do mesmo ponto sem pular.
+    const interfaceAberta = cfg.ponte.interfaceAberta ? cfg.ponte.interfaceAberta() : false;
+    if (interfaceAberta) {
+      if (!pausaInterface) {
+        pausaInterface = true;
+        ultimoAlvo = "";
+        trecho = null;
+        cfg.ponte.enviar({ t: "parar" });
+        registro.evento("pausa_interface", { modo: modo });
+      }
+      return;
+    }
+    if (pausaInterface) {
+      pausaInterface = false;
+      ultimoAlvo = "";
+      trecho = null;
+      ultimoGiro = 0;
+      if (modo === "rota") {
+        rota.retomarAposInterface(agora);
+      } else if (modo === "seguir" && seguindoId) {
+        seguidor.seguir(seguindoId, agora);
+      }
+      registro.evento("retomada_interface", { modo: modo });
     }
 
     if (agora < pausadoAte) return;
@@ -2101,10 +2174,20 @@ function criarMotor(opcoes) {
   }
 
   // Volta do segundo plano: reenvia o alvo atual em vez de ficar parado no cache.
+  // O tempo em segundo plano não pode contar como "sem progresso", senão a rota
+  // acorda já no limite e pula waypoint por causa do `onPause` do APK.
   function retomar() {
     ultimoAlvo = "";
     trecho = null;
     pausadoAte = 0;
+    ultimoEnvio = 0;
+    pausaInterface = false;
+    const agora = cfg.agora();
+    if (modo === "rota") {
+      rota.retomarAposInterface(agora);
+    } else if (modo === "seguir" && seguindoId) {
+      seguidor.seguir(seguindoId, agora);
+    }
     iniciar();
   }
 
@@ -2119,6 +2202,11 @@ function criarMotor(opcoes) {
     parar,
     modo: () => modo,
     pausadoAte: () => pausadoAte,
+    pausaInterface: () => pausaInterface,
+    rodando: () => timer !== null,
+    // Presença (tecla Shift) só é necessária enquanto existe `ir` recente.
+    // 8 s cobre pernas longas e o trecho de 6 tiles sem flickar a tecla.
+    comandando: () => modo !== "parada" && cfg.agora() - ultimoEnvio < 8000,
     pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
     ultimoMotivo: () => ultimoMotivoParada,
     rota,
@@ -2769,6 +2857,9 @@ function criarPainel(opcoes) {
     }
     return {
       modo: motor.modo(),
+      pausaUi: motor.pausaInterface(),
+      comandando: motor.comandando(),
+      rodando: motor.rodando(),
       seguir: motor.seguindoId(),
       rota: {
         total: motor.rota.total(),
@@ -2882,6 +2973,8 @@ function criarPainel(opcoes) {
   // histerese do desktop: +2 monstros para trocar e 3 s segurando o escolhido.
   function passoArea() {
     if (!areaLigada || !ponte.pronto()) return;
+    // Menu de opções/inventário/task aberto: não varre monstros nem troca alvo.
+    if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
     const st = ponte.estado();
     if (!st.emJogo || !st.vivo || !st.pos) return;
     const monstros = ponte.monstros();
@@ -2942,12 +3035,15 @@ function criarPainel(opcoes) {
   }
 
   if (ponteNativa) {
+    // 1 s mantém a presença (Shift) alinhada ao primeiro `ir` da rota.
     setInterval(publicar, 1000);
     publicar();
   }
 
   // Guarda a rota a cada 3 s e tenta retomar depois de mortes e recargas.
+  // Com menu aberto não grava: o estado não muda e o localStorage é síncrono.
   setInterval(function () {
+    if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
     if (ligado) {
       if (!sessaoTentada) tentarRestaurarSessao();
       guardarRota();

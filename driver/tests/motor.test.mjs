@@ -7,6 +7,7 @@ function cenario(inicial, opcoes) {
   let agora = 0;
   let alvo = null;
   let mobs = [];
+  let interfaceAberta = false;
   const cfg = opcoes || {};
   let mana = cfg.mana == null ? 100 : cfg.mana;
   const enviados = [];
@@ -27,6 +28,7 @@ function cenario(inicial, opcoes) {
     girar: (face) => { enviados.push({ t: "pc", k: "xd", d: { a: face } }); return true; },
     entidade: () => alvo,
     monstros: () => mobs,
+    interfaceAberta: () => interfaceAberta,
   };
   if (cfg.caminavel) ponte.caminavel = cfg.caminavel;
   const motor = criarMotor({
@@ -43,6 +45,7 @@ function cenario(inicial, opcoes) {
     definirAlvo(a) { alvo = a; },
     definirMobs(lista) { mobs = lista; },
     definirMana(pct) { mana = pct; },
+    definirInterface(aberta) { interfaceAberta = !!aberta; },
   };
 }
 
@@ -169,6 +172,60 @@ test("ponto de caça para o personagem e só anda depois de limpar", () => {
   c.passar(300);
   c.motor.tick();
   assert.ok(c.enviados.some((m) => m.t === "ir" && m.x === 12 && m.y === 10), "não seguiu depois de limpar");
+});
+
+test("menu do jogo pausa os comandos e retoma do mesmo ponto", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 });
+  c.motor.iniciarRota([[0, 10]], "teste");
+  c.motor.tick();
+  assert.ok(c.enviados.some((m) => m.t === "ir"), "não começou a andar");
+
+  c.definirInterface(true);
+  c.passar(1000);
+  c.motor.tick();
+  assert.equal(c.motor.pausaInterface(), true);
+  assert.equal(c.enviados.at(-1).t, "parar", "não parou ao abrir o menu");
+
+  const antes = c.enviados.length;
+  c.passar(20000);
+  c.motor.tick();
+  c.motor.tick();
+  assert.equal(c.enviados.length, antes, "continuou comandando com menu aberto");
+  assert.equal(c.motor.comandando(), false, "presença seguiria com menu aberto");
+
+  c.definirInterface(false);
+  c.passar(500);
+  c.motor.tick();
+  assert.equal(c.motor.pausaInterface(), false);
+  assert.ok(c.enviados.slice(antes).some((m) => m.t === "ir"), "não retomou a rota");
+  assert.ok(c.eventos.some((e) => e.nome === "pausa_interface"));
+  assert.ok(c.eventos.some((e) => e.nome === "retomada_interface"));
+});
+
+test("voltar do segundo plano não conta o tempo parado e não pula waypoint", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 });
+  c.motor.iniciarRota([[0, 10]], "teste");
+  c.motor.tick();
+
+  // Ficou minimizado/em segundo plano por um minuto.
+  c.passar(60000);
+  c.motor.encerrar();
+  c.motor.retomar();
+  c.motor.encerrar();
+  c.motor.tick();
+
+  assert.equal(c.motor.rota.indice(), 0, "pulou o waypoint ao voltar");
+  assert.equal(c.eventos.some((e) => e.nome === "rota_pulou"), false);
+  assert.ok(c.enviados.some((m) => m.t === "ir"), "não voltou a andar");
+});
+
+test("motor expõe se o laço está rodando", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 });
+  assert.equal(c.motor.rodando(), false);
+  c.motor.iniciar();
+  assert.equal(c.motor.rodando(), true);
+  c.motor.encerrar();
+  assert.equal(c.motor.rodando(), false);
 });
 
 test("pausa humana não interrompe o seguir", () => {

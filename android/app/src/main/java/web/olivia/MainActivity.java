@@ -33,6 +33,9 @@ public class MainActivity extends Activity {
     private String driver = "";
     private long ultimaInjecao = 0;
     private volatile long ultimoEstado = 0;
+    private long ultimaSonda = 0;
+    private boolean sondaPendente = false;
+    private volatile boolean precisaRetomar = false;
     private int injecoes = 0;
     private volatile boolean emRota = false;
     private volatile boolean emFrente = false;
@@ -199,15 +202,47 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("javascript:(function(){try{" + js + "}catch(e){console.warn('[Olivia]',e)}})()", null);
     }
 
-    /** Se o driver parar de publicar (reload do VersionWeb), reinjeta. */
+    /**
+     * Se o driver parar de publicar, primeiro pergunta se ele ainda está vivo.
+     * Menus pesados (opções, RTC, task) podem segurar a thread JS por vários
+     * segundos; reinjetar ~100 KB no meio disso piorava muito o travamento.
+     */
     private void vigiar() {
-        if (!emFrente) {
+        if (!emFrente || web == null) {
             laco.postDelayed(this::vigiar, 2500);
             return;
         }
+        String url = web.getUrl();
+        if (url == null || !url.contains("lowmmorpg.com/juego")) {
+            laco.postDelayed(this::vigiar, 2500);
+            return;
+        }
+        // O WebView pode continuar publicando estado com o laço do motor parado
+        // (onPause/onResume perdido, atualização do WebView etc). Em primeiro plano,
+        // religa o motor; em segundo plano não mexe.
+        if (emFrente && precisaRetomar) {
+            precisaRetomar = false;
+            chamarJs("Olivia.retomarMotor()");
+        }
         long agora = System.currentTimeMillis();
-        if (ultimoEstado == 0 || agora - ultimoEstado > 6000) {
-            injetar(false);
+        if (ultimoEstado == 0 || agora - ultimoEstado > 15000) {
+            if (!sondaPendente && agora - ultimaSonda > 5000) {
+                sondaPendente = true;
+                ultimaSonda = agora;
+                web.evaluateJavascript(
+                        "(function(){try{return !!(window.Olivia&&window.Olivia.estado&&document.documentElement.dataset.ovw==='1')}catch(e){return false}})()",
+                        new android.webkit.ValueCallback<String>() {
+                            @Override
+                            public void onReceiveValue(String valor) {
+                                sondaPendente = false;
+                                if ("true".equals(valor)) {
+                                    ultimoEstado = System.currentTimeMillis();
+                                } else {
+                                    injetar(false);
+                                }
+                            }
+                        });
+            }
         }
         laco.postDelayed(this::vigiar, 2500);
     }
@@ -221,7 +256,12 @@ public class MainActivity extends Activity {
                 public void run() {
                     try {
                         JSONObject s = new JSONObject(json);
-                        emRota = !"parada".equals(s.optString("modo", "parada"));
+                        boolean pausaUi = s.optBoolean("pausaUi", false);
+                        boolean comandando = s.optBoolean("comandando", !"parada".equals(s.optString("modo", "parada")));
+                        boolean rodando = s.optBoolean("rodando", true);
+                        emRota = comandando && !pausaUi;
+                        precisaRetomar = !"parada".equals(s.optString("modo", "parada"))
+                                && !pausaUi && !rodando;
                         painel.atualizar(s);
                     } catch (Exception e) {
                         painel.nota("estado inválido: " + e.getClass().getSimpleName());

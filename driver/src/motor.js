@@ -37,6 +37,8 @@ export function criarMotor(opcoes) {
   let trecho = null; // trecho atual: { destino, alvo }
   let pisoRota = null;
   let emCaca = false;
+  // Interface aberta: pausa comandos e atualizações pesadas até o jogador fechar.
+  let pausaInterface = false;
 
   function enviarIr(x, y, forcar) {
     const agora = cfg.agora();
@@ -89,6 +91,7 @@ export function criarMotor(opcoes) {
     pisoRota = pos && Number.isInteger(pos.z) ? pos.z : null;
     ultimoMotivoParada = null;
     emCaca = false;
+    pausaInterface = false;
     const alvo = rota.alvo();
     registro.evento("rota_inicio", {
       total: total,
@@ -114,6 +117,7 @@ export function criarMotor(opcoes) {
     ultimoAlvo = "";
     trecho = null;
     ultimoGiro = 0;
+    pausaInterface = false;
     registro.evento("seguir_inicio", {
       alvo: seguindoId,
       sqm: seguidor.alcanceEfetivo(),
@@ -141,6 +145,8 @@ export function criarMotor(opcoes) {
     ultimoGiro = 0;
     pisoRota = null;
     emCaca = false;
+    pausaInterface = false;
+    ultimoEnvio = 0;
     ultimoMotivoParada = motivo || "pedido";
     cfg.ponte.enviar({ t: "parar" });
     sessao.parada();
@@ -165,6 +171,32 @@ export function criarMotor(opcoes) {
       sessao.morte();
       parar(!st.emJogo ? "fora" : "morto");
       return;
+    }
+
+    // Menu/inventário/task/RTC abertos: para os comandos e não compete com a
+    // interface do jogo. Ao fechar, a rota retoma do mesmo ponto sem pular.
+    const interfaceAberta = cfg.ponte.interfaceAberta ? cfg.ponte.interfaceAberta() : false;
+    if (interfaceAberta) {
+      if (!pausaInterface) {
+        pausaInterface = true;
+        ultimoAlvo = "";
+        trecho = null;
+        cfg.ponte.enviar({ t: "parar" });
+        registro.evento("pausa_interface", { modo: modo });
+      }
+      return;
+    }
+    if (pausaInterface) {
+      pausaInterface = false;
+      ultimoAlvo = "";
+      trecho = null;
+      ultimoGiro = 0;
+      if (modo === "rota") {
+        rota.retomarAposInterface(agora);
+      } else if (modo === "seguir" && seguindoId) {
+        seguidor.seguir(seguindoId, agora);
+      }
+      registro.evento("retomada_interface", { modo: modo });
     }
 
     if (agora < pausadoAte) return;
@@ -330,10 +362,20 @@ export function criarMotor(opcoes) {
   }
 
   // Volta do segundo plano: reenvia o alvo atual em vez de ficar parado no cache.
+  // O tempo em segundo plano não pode contar como "sem progresso", senão a rota
+  // acorda já no limite e pula waypoint por causa do `onPause` do APK.
   function retomar() {
     ultimoAlvo = "";
     trecho = null;
     pausadoAte = 0;
+    ultimoEnvio = 0;
+    pausaInterface = false;
+    const agora = cfg.agora();
+    if (modo === "rota") {
+      rota.retomarAposInterface(agora);
+    } else if (modo === "seguir" && seguindoId) {
+      seguidor.seguir(seguindoId, agora);
+    }
     iniciar();
   }
 
@@ -348,6 +390,11 @@ export function criarMotor(opcoes) {
     parar,
     modo: () => modo,
     pausadoAte: () => pausadoAte,
+    pausaInterface: () => pausaInterface,
+    rodando: () => timer !== null,
+    // Presença (tecla Shift) só é necessária enquanto existe `ir` recente.
+    // 8 s cobre pernas longas e o trecho de 6 tiles sem flickar a tecla.
+    comandando: () => modo !== "parada" && cfg.agora() - ultimoEnvio < 8000,
     pausaRestante: () => Math.max(0, pausadoAte - cfg.agora(), rota.esperaRestante(cfg.agora())),
     ultimoMotivo: () => ultimoMotivoParada,
     rota,

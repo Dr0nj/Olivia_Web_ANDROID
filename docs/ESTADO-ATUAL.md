@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.2
+**Versão:** 0.9.3
 **Data:** 2026-11-27
-**Commit:** `41d9f00` + release 0.9.2
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.2
-**APK:** `android/app/build/olivia-web.apk` (125 KB)
+**Commit:** release v0.9.3
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.3
+**APK:** `android/app/build/olivia-web.apk` (129 KB)
 
 ## Validado
 
-- **101 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **104 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -37,6 +37,21 @@
    esperas). **Trem**: N+ monstros a até 4 sqm e preso 1,5 s caça no lugar sem pular.
 3. **UI**: botão **Ponto de caça** e dialog **Caça…** no APK; marcação/config no painel
    da página. Configuração fica em `ovw.caca` / prefs `caca*`.
+
+## Mudanças da 0.9.3 (performance)
+
+1. **Watchdog sem reinjeção em menu**: o APK só reinjeta o driver depois de 15 s sem
+   estado **e** de uma sonda barata (`window.Olivia` + `data-ovw`). Antes, um menu
+   pesado que segurava o JS por >6 s fazia o app jogar ~100 KB de driver na thread
+   principal, piorando o travamento em cascata.
+2. **Pausa de interface**: opções/inventário/RTC/task abertos (`MenuLow`, `Hud.ventanaTipo`,
+   `#ventana`, `#vmenu`, `.lo-dlg`) pausam comandos, presença Shift, varredura de área e
+   persistência. Ao fechar, retoma o mesmo ponto; caça reinicia o relógio.
+3. **Menos trabalho periódico**: `passoArea` e `guardarRota` não rodam com menu aberto;
+   a presença Shift só é enviada enquanto existe `ir` recente.
+4. **Voltar do segundo plano** (`onPause`/`onResume`) reinicia o prazo do trecho: o tempo
+   minimizado não conta como “sem progresso” e não dispara `rota_pulou`. O APK também
+   religa o laço se o estado chegar com `rodando=false` em primeiro plano.
 
 ## Seguir knight (onda)
 

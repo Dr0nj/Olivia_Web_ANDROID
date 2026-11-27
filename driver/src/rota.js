@@ -403,6 +403,22 @@ export function criarRota(opcoes) {
     return caca.configurar(config);
   }
 
+  // Pausa por interface do jogo: o tempo parado não conta como travamento nem
+  // como "preso"; a caça recomeça o relógio no ponto em que estava.
+  function retomarAposInterface(agora) {
+    if (situacao === "cacando") {
+      const info = caca.info(agora);
+      caca.iniciar(agora, { noPonto: info.noPonto, motivo: "retomando após interface" });
+    }
+    pausaAte = 0;
+    desde = agora;
+    limite = null;
+    ultimaPos = null;
+    posMovel = null;
+    mudouEm = agora;
+    finalizando = false;
+  }
+
   function cacaInfo(agora) {
     const quando = Number.isFinite(agora) ? agora : 0;
     return Object.assign({}, caca.info(quando), {
@@ -534,6 +550,7 @@ export function criarRota(opcoes) {
     definirAtraso,
     atrasoConfig: () => Object.assign({}, atraso),
     definirCaca,
+    retomarAposInterface,
     cacaConfig: () => caca.config(),
     cacaInfo,
     repetir,

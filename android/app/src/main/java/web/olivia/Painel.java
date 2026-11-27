@@ -1037,7 +1037,10 @@ class Painel {
 
             String situacaoRota = s.has("rota") && s.optJSONObject("rota") != null
                     ? s.optJSONObject("rota").optString("situacao", "") : "";
-            estado.setText("seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
+            boolean pausaUi = s.optBoolean("pausaUi", false);
+            estado.setText(pausaUi
+                    ? "menu do jogo · pausado"
+                    : "seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
                     ? "seguindo " + s.optString("seguir") + (ondaAtiva ? " · onda" : "")
                     : ("rota".equals(modo) && "esperando".equals(situacaoRota)
                     ? "rota · esperando"

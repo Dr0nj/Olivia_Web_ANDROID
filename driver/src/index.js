@@ -232,6 +232,9 @@ import { CACA_PADRAO } from "./caca.js";
     }
     return {
       modo: motor.modo(),
+      pausaUi: motor.pausaInterface(),
+      comandando: motor.comandando(),
+      rodando: motor.rodando(),
       seguir: motor.seguindoId(),
       rota: {
         total: motor.rota.total(),
@@ -345,6 +348,8 @@ import { CACA_PADRAO } from "./caca.js";
   // histerese do desktop: +2 monstros para trocar e 3 s segurando o escolhido.
   function passoArea() {
     if (!areaLigada || !ponte.pronto()) return;
+    // Menu de opções/inventário/task aberto: não varre monstros nem troca alvo.
+    if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
     const st = ponte.estado();
     if (!st.emJogo || !st.vivo || !st.pos) return;
     const monstros = ponte.monstros();
@@ -405,12 +410,15 @@ import { CACA_PADRAO } from "./caca.js";
   }
 
   if (ponteNativa) {
+    // 1 s mantém a presença (Shift) alinhada ao primeiro `ir` da rota.
     setInterval(publicar, 1000);
     publicar();
   }
 
   // Guarda a rota a cada 3 s e tenta retomar depois de mortes e recargas.
+  // Com menu aberto não grava: o estado não muda e o localStorage é síncrono.
   setInterval(function () {
+    if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
     if (ligado) {
       if (!sessaoTentada) tentarRestaurarSessao();
       guardarRota();

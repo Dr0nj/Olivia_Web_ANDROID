@@ -159,7 +159,7 @@ driver/src/                   motor JS
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   painel.js                   painel DOM (modo userscript)
 driver/tests/                 117 testes (node --test)
-src/olivia-web.user.js        protótipo antigo (só anti-bot), superado por driver/ + dist/
+dist/olivia-web.user.js       userscript gerado (única versão suportada)
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
 tools/auditar-calidad.mjs     compara as regras do detector com o red.js publicado

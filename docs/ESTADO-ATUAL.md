@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.12
+**Versão:** 0.9.14
 **Data:** 2026-11-27
-**Commit:** release v0.9.12
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.12
+**Commit:** release v0.9.14
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.14
 **APK:** `android/app/build/olivia-web.apk` (149 KB)
 
 ## Validado
 
-- **145 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **146 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -18,6 +18,25 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.13 (follow fora de alcance)
+
+1. **Seguir** não desliga mais sozinho quando o alvo sai do alcance do cliente: avisa
+   uma vez (`seguir_alvo_fora`), continua em espera e retoma quando o alvo reaparece.
+   Só `Olivia.parar()` encerra.
+2. Minimizar/restaurar preserva o alvo; retomar reinicia o relógio de perda.
+
+## Mudanças da 0.9.14 (re-target sem loop)
+
+1. **`retarget_config` não repete mais**: `Olivia.retarget.definir` só grava o evento e
+   republica quando `ligado` ou `sqm` realmente mudam.
+2. **Checkbox não volta sozinho**: a tela nativa ignora estados antigos enquanto o pedido
+   do usuário ainda está sendo aplicado e não salva nada quando quem mudou o checkbox foi
+   o próprio `atualizar`.
+3. **Campo sqm** só salva quando o usuário está editando; `setText` programático não
+   dispara outro `definir`.
+4. Validado no Bugokina: alternar o checkbox muda `true`/`false` normalmente e o log
+   registra só uma linha por mudança real.
 
 ## Mudanças da 0.9.12 (rodapé e configurações)
 

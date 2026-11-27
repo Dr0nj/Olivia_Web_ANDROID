@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.13
+// @version      0.9.14
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -4288,10 +4288,16 @@ function criarPainel(opcoes) {
         return { ligado: retarget.ligado, sqm: retarget.sqm, alvo: retargetAlvo, areaPrioridade: areaLigada };
       },
       definir: function (ligado, sqm) {
-        retarget.ligado = !!ligado;
+        const novoLigado = !!ligado;
+        let novoSqm = retarget.sqm;
         if (sqm !== undefined && Number.isFinite(Number(sqm))) {
-          retarget.sqm = Math.max(1, Math.min(8, Math.round(Number(sqm))));
+          novoSqm = Math.max(1, Math.min(8, Math.round(Number(sqm))));
         }
+        if (retarget.ligado === novoLigado && retarget.sqm === novoSqm) {
+          return { ligado: retarget.ligado, sqm: retarget.sqm };
+        }
+        retarget.ligado = novoLigado;
+        retarget.sqm = novoSqm;
         gravar(CHAVE_RETARGET, retarget);
         retargetAlvo = null;
         registro.evento("retarget_config", {

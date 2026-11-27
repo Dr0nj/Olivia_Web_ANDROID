@@ -132,6 +132,12 @@ class Painel {
     private CheckBox area;
     private CheckBox retarget;
     private EditText retargetSqm;
+    private boolean aplicandoRetarget = false;
+    private boolean retargetEstadoLigado;
+    private int retargetEstadoSqm;
+    private long retargetPedidoEm = 0;
+    private boolean retargetPedidoLigado;
+    private int retargetPedidoSqm;
     private CheckBox rtcSempre;
     private String posAtual = "";
     private boolean recolhido = false;
@@ -670,15 +676,23 @@ class Painel {
                 8.5f, Color.rgb(111, 138, 156), false));
         retarget.setOnCheckedChangeListener((b, marcado) -> {
             retargetSqm.setEnabled(marcado);
+            if (aplicandoRetarget) return;
             salvarRetarget();
         });
         retargetSqm.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
             @Override public void afterTextChanged(Editable s) {
-                if (retarget != null && retarget.isChecked()) salvarRetarget();
+                if (aplicandoRetarget) return;
+                if (retarget != null && retarget.isChecked() && retargetSqm.hasFocus()) {
+                    salvarRetarget();
+                }
             }
         });
+        retargetEstadoLigado = retarget.isChecked();
+        retargetEstadoSqm = prefs.getInt("retargetSqm", 6);
+        retargetPedidoLigado = retargetEstadoLigado;
+        retargetPedidoSqm = retargetEstadoSqm;
 
         rtcSempre = new CheckBox(ctx);
         estilizarCaixa(rtcSempre);
@@ -1058,6 +1072,9 @@ class Painel {
         } catch (Exception ignorado) {
         }
         sqm = Math.max(1, Math.min(8, sqm));
+        retargetPedidoEm = System.currentTimeMillis();
+        retargetPedidoLigado = retarget.isChecked();
+        retargetPedidoSqm = sqm;
         prefs.edit()
                 .putBoolean("retarget", retarget.isChecked())
                 .putInt("retargetSqm", sqm)
@@ -1446,11 +1463,27 @@ class Painel {
             JSONObject retargetJson = s.optJSONObject("retarget");
             if (retargetJson != null && retarget != null) {
                 boolean lig = retargetJson.optBoolean("ligado", false);
-                if (retarget.isChecked() != lig) retarget.setChecked(lig);
-                if (retargetSqm != null && !retargetSqm.hasFocus()) {
-                    int sqm = Math.max(1, Math.min(8, retargetJson.optInt("sqm", 6)));
-                    if (!String.valueOf(sqm).equals(retargetSqm.getText().toString())) {
+                int sqm = Math.max(1, Math.min(8, retargetJson.optInt("sqm", 6)));
+                long agoraRetarget = System.currentTimeMillis();
+                boolean pendenteLig = agoraRetarget - retargetPedidoEm < 2000
+                        && lig != retargetPedidoLigado;
+                if (retargetEstadoLigado != lig && !pendenteLig) {
+                    retargetEstadoLigado = lig;
+                    if (retarget.isChecked() != lig) {
+                        aplicandoRetarget = true;
+                        retarget.setChecked(lig);
+                        aplicandoRetarget = false;
+                    }
+                }
+                if (retargetSqm != null) {
+                    retargetSqm.setEnabled(retarget.isChecked());
+                    boolean pendenteSqm = agoraRetarget - retargetPedidoEm < 2000
+                            && sqm != retargetPedidoSqm;
+                    if (!retargetSqm.hasFocus() && !pendenteSqm && retargetEstadoSqm != sqm) {
+                        retargetEstadoSqm = sqm;
+                        aplicandoRetarget = true;
                         retargetSqm.setText(String.valueOf(sqm));
+                        aplicandoRetarget = false;
                     }
                 }
             }

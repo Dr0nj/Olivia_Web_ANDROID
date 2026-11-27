@@ -176,7 +176,7 @@ driver/src/                   motor JS
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   tarefas.js                  repetição de task + confirmação no HUD
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 145 testes (node --test)
+driver/tests/                 146 testes (node --test)
 dist/olivia-web.user.js       userscript gerado (única versão suportada)
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -191,7 +191,7 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 145 testes
+node --test driver\tests                 # 146 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 

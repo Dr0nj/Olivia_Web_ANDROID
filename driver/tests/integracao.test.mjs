@@ -497,3 +497,19 @@ test("conta poções de vida e mana do inventário", () => {
   assert.equal(estado.suprimentos.oro, 1234);
   assert.equal(estado.suprimentos.itens, 545);
 });
+
+test("retarget_config só registra quando a configuração muda de verdade", () => {
+  const { janela } = cenario();
+  const contar = () => janela.Olivia.log.todos()
+    .filter((e) => e.nome === "retarget_config").length;
+  const antes = contar();
+
+  janela.Olivia.retarget.definir(false, 6);
+  janela.Olivia.retarget.definir(false, 6);
+  assert.equal(contar(), antes, "configuração igual não pode logar de novo");
+
+  janela.Olivia.retarget.definir(true, 4);
+  assert.equal(contar(), antes + 1);
+  janela.Olivia.retarget.definir(true, 4);
+  assert.equal(contar(), antes + 1, "repetir a mesma config não loga");
+});

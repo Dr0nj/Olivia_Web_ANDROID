@@ -57,9 +57,12 @@ Ensaio desligado depois com `definirEnsaio(false)`.
 
 ## 6. Seguidor
 
-`Olivia.seguir(123456)` (ID inexistente): `seguir_inicio` → `seguir_perdeu` em ~5 s →
-`parada:alvo_perdido`. Caminho de perda validado; falta testar com um segundo personagem
+`Olivia.seguir(123456)` (ID inexistente): `seguir_inicio` → `seguir_alvo_fora` em ~5 s,
+**sem** desligar o modo. Caminho de perda validado; falta testar com um segundo personagem
 real visível.
+
+Revisão 27/11/2026: antes o follow chamava `parada:alvo_perdido` após 5 s. Agora mantém o
+modo ligado (paridade com o desktop) e retoma sozinho quando o alvo reaparece.
 
 ## 7. Persistência
 

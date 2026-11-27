@@ -14,15 +14,21 @@ test("para quando está colado (diagonal conta 1)", () => {
   assert.deepEqual(s.passo({ alvo: { x: 11, y: 11 }, pos: { x: 10, y: 10 }, agora: 10 }), { acao: "esperar", motivo: "colado" });
 });
 
-test("espera alvo fora de vista e desiste depois do limite", () => {
+test("espera alvo fora de vista sem desistir do seguimento", () => {
   const s = criarSeguidor({ perdaMs: 1000 });
   s.seguir("9", 0);
   assert.deepEqual(s.passo({ alvo: null, pos: { x: 1, y: 1 }, agora: 500 }), { acao: "esperar", motivo: "alvo-fora-de-vista" });
   s.passo({ alvo: { x: 2, y: 2 }, pos: { x: 1, y: 1 }, agora: 900 });
   assert.equal(s.situacao(), "seguindo");
-  assert.deepEqual(s.passo({ alvo: null, pos: { x: 1, y: 1 }, agora: 2000 }), { acao: "perdeu", alvo: "9" });
-  assert.equal(s.situacao(), "perdeu");
-  assert.equal(s.passo({ alvo: null, pos: { x: 1, y: 1 }, agora: 2100 }), null);
+
+  // Passou do limite: avisa uma vez, mas continua seguindo.
+  assert.deepEqual(s.passo({ alvo: null, pos: { x: 1, y: 1 }, agora: 2000 }), { acao: "perdeu", alvo: "9", desdeMs: 1100 });
+  assert.equal(s.situacao(), "seguindo");
+  assert.deepEqual(s.passo({ alvo: null, pos: { x: 1, y: 1 }, agora: 2100 }), { acao: "esperar", motivo: "alvo-fora-de-vista" });
+
+  // Alvo voltou: retoma sozinho, sem precisar de novo `seguir`.
+  assert.deepEqual(s.passo({ alvo: { x: 5, y: 5 }, pos: { x: 1, y: 1 }, agora: 2500 }), { acao: "ir", x: 5, y: 5, alvo: "9" });
+  assert.equal(s.situacao(), "seguindo");
 });
 
 test("parar encerra o seguimento", () => {

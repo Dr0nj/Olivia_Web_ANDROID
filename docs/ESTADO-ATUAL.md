@@ -8,7 +8,7 @@
 
 ## Validado
 
-- **144 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **145 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;

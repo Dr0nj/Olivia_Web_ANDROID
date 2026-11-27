@@ -63,6 +63,8 @@ Em **⚙**:
 
 **Seguir jogador** (página): lista os jogadores por perto com id e distância; escolha um,
 defina a **distância em sqm** (0 = mesmo tile) e toque em **Seguir**. **Parar** encerra.
+Se o alvo sair do alcance, o log mostra `seguir_alvo_fora` uma vez e o modo continua
+ligado; ao reaparecer, ele volta a andar sozinho.
 
 **Seguir knight (onda)**: marque o checkbox na mesma página. A distância vira **4 sqm** e
 o Olivia fica na vaga da onda, com o knight no centro do 3x3. Para conferir: o log mostra

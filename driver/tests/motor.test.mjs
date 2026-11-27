@@ -249,6 +249,29 @@ test("motor expõe se o laço está rodando", () => {
   assert.equal(c.motor.rodando(), false);
 });
 
+test("seguir continua ligado quando o alvo sai do alcance", () => {
+  const c = cenario({ x: 0, y: 0, z: 0 });
+  c.definirAlvo({ x: 0, y: 20, nome: "Alvo", id: 7 });
+  c.motor.seguir(7);
+  c.motor.tick();
+  assert.ok(c.enviados.some((m) => m.t === "ir"), "não começou a seguir");
+
+  // Alvo saiu do alcance do cliente: avisa, mas NÃO desliga o modo.
+  c.definirAlvo(null);
+  c.passar(6000);
+  c.motor.tick();
+  assert.equal(c.motor.modo(), "seguir", "desligou o follow ao perder o alvo");
+  assert.ok(c.eventos.some((e) => e.nome === "seguir_alvo_fora"), "não avisou o alvo fora");
+
+  // Alvo voltou: retoma sozinho, sem novo comando do painel.
+  c.definirAlvo({ x: 0, y: 20, nome: "Alvo", id: 7 });
+  c.passar(1000);
+  const antes = c.enviados.length;
+  c.motor.tick();
+  assert.equal(c.motor.modo(), "seguir");
+  assert.ok(c.enviados.length > antes, "não voltou a andar quando o alvo reapareceu");
+});
+
 test("pausa humana não interrompe o seguir", () => {
   const c = cenario({ x: 0, y: 0, z: 0 });
   c.definirAlvo({ x: 0, y: 20, nome: "Alvo", id: 7 });

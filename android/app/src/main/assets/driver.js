@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.12
+// @version      0.9.13
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1154,7 +1154,9 @@ function decidirLado(opcoes) {
 }
 
 
-// Seguidor: mantém o personagem colado a um alvo (jogador) e desiste se o alvo sumir.
+// Seguidor: mantém o personagem colado a um alvo (jogador). Se o alvo sair do
+// alcance do cliente, espera e volta sozinho quando ele reaparece; só encerra no
+// `parar()` explícito, como no desktop.
 // Com "seguir knight" (onda) ligado, fica a 4 sqm do alvo, na mesma linha/coluna,
 // escolhendo o lado que a área 1,1,3,3,3 acerta mais monstros e virando para o alvo.
 
@@ -1169,8 +1171,10 @@ function criarSeguidor(opcoes) {
 
   let alvoId = null;
   let vistoEm = 0;
-  let situacao = "parada"; // parada | seguindo | perdeu
+  let situacao = "parada"; // parada | seguindo
   let passoEm = 0;
+  // Aviso de alvo fora de vista: sai uma vez por ausência, mas não encerra o modo.
+  let avisouPerda = false;
 
   // Estado do seguir knight.
   let ladoOnda = -1;
@@ -1183,6 +1187,7 @@ function criarSeguidor(opcoes) {
     vistoEm = agora;
     situacao = "seguindo";
     passoEm = 0;
+    avisouPerda = false;
     ladoOnda = -1;
     avaliadoEm = 0;
     posAlvoAnterior = null;
@@ -1194,6 +1199,7 @@ function criarSeguidor(opcoes) {
     alvoId = null;
     situacao = "parada";
     passoEm = 0;
+    avisouPerda = false;
     ladoOnda = -1;
     avaliadoEm = 0;
     posAlvoAnterior = null;
@@ -1288,7 +1294,7 @@ function criarSeguidor(opcoes) {
     };
   }
 
-  // Retorna: ir | esperar | passo | perdeu | null
+  // Retorna: ir | esperar | passo | perdeu (aviso único) | null
   function passo(entrada) {
     if (situacao !== "seguindo") return null;
     const agora = entrada.agora;
@@ -1297,6 +1303,7 @@ function criarSeguidor(opcoes) {
 
     if (alvo && Number.isFinite(alvo.x) && Number.isFinite(alvo.y)) {
       vistoEm = agora;
+      avisouPerda = false;
       if (!pos) return { acao: "esperar", motivo: "sem-posicao" };
       if (cfg.onda) return passoOnda(alvo, pos, entrada, agora);
 
@@ -1320,9 +1327,12 @@ function criarSeguidor(opcoes) {
       return { acao: "ir", x: alvo.x, y: alvo.y, alvo: alvoId };
     }
 
-    if (agora - vistoEm > cfg.perdaMs) {
-      situacao = "perdeu";
-      return { acao: "perdeu", alvo: alvoId };
+    // Alvo fora de vista: NÃO encerra o seguimento. O desktop só para quando o
+    // usuário desliga; aqui o modo fica ligado e volta a andar sozinho quando a
+    // entidade reaparece. O `perdeu` sai uma vez só para o log avisar.
+    if (!avisouPerda && agora - vistoEm > cfg.perdaMs) {
+      avisouPerda = true;
+      return { acao: "perdeu", alvo: alvoId, desdeMs: agora - vistoEm };
     }
     return { acao: "esperar", motivo: "alvo-fora-de-vista" };
   }
@@ -3056,8 +3066,13 @@ function criarMotor(opcoes) {
         return;
       }
       if (d.acao === "perdeu") {
-        registro.evento("seguir_perdeu", { alvo: d.alvo });
-        parar("alvo_perdido");
+        // Só avisa: o modo continua ligado, como no desktop. Parar aqui fazia o
+        // follow desligar sozinho 5 s depois de o alvo sair do alcance do cliente.
+        // Limpa o trecho para reenviar um `ir` novo quando o alvo reaparecer.
+        ultimoAlvo = "";
+        trecho = null;
+        registro.evento("seguir_alvo_fora", { alvo: d.alvo, desdeMs: d.desdeMs });
+        return;
       }
     }
   }

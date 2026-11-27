@@ -457,8 +457,13 @@ export function criarMotor(opcoes) {
         return;
       }
       if (d.acao === "perdeu") {
-        registro.evento("seguir_perdeu", { alvo: d.alvo });
-        parar("alvo_perdido");
+        // Só avisa: o modo continua ligado, como no desktop. Parar aqui fazia o
+        // follow desligar sozinho 5 s depois de o alvo sair do alcance do cliente.
+        // Limpa o trecho para reenviar um `ir` novo quando o alvo reaparecer.
+        ultimoAlvo = "";
+        trecho = null;
+        registro.evento("seguir_alvo_fora", { alvo: d.alvo, desdeMs: d.desdeMs });
+        return;
       }
     }
   }

@@ -13,13 +13,18 @@ export function criarRtcSempre(opcoes) {
     maxFalhas: 3,
     backoffMs: 60000,
     pedidoMs: 8000,
+    // Não religa a cada 2 s: depois de uma tentativa espera o cooldown.
+    cooldownMs: 15000,
+    // Só considera "ligado de verdade" (e zera as falhas) depois disso.
+    estavelMs: 5000,
   }, opcoes || {});
 
   let ativo = !!cfg.ligado;
   let falhas = 0;
   let bloqueadoAte = 0;
   let pedidoEm = -1;
-  let ultimaTentativa = 0;
+  let ultimaTentativa = -1;
+  let ligadoDesde = 0;
 
   function logar(nome, dados) {
     if (cfg.log) cfg.log(nome, Object.assign({}, dados || {}));
@@ -30,6 +35,8 @@ export function criarRtcSempre(opcoes) {
     falhas = 0;
     bloqueadoAte = 0;
     pedidoEm = -1;
+    ligadoDesde = 0;
+    ultimaTentativa = -1;
     return ativo;
   }
 
@@ -65,12 +72,16 @@ export function criarRtcSempre(opcoes) {
     }
 
     if (aa.on === true) {
-      if (falhas !== 0 || bloqueadoAte !== 0) {
+      if (ligadoDesde === 0) ligadoDesde = agora;
+      // Só zera as falhas depois que o RTC ficou ligado de verdade por alguns segundos;
+      // se o jogo desligar logo em seguida, a próxima tentativa ainda conta como falha.
+      if (falhas !== 0 && agora - ligadoDesde >= cfg.estavelMs) {
         falhas = 0;
         bloqueadoAte = 0;
       }
       return { acao: "ativo" };
     }
+    ligadoDesde = 0;
 
     if (agora < bloqueadoAte) {
       return { acao: "backoff", restanteMs: bloqueadoAte - agora };
@@ -82,6 +93,11 @@ export function criarRtcSempre(opcoes) {
       falhas = 0;
       logar("rtc_recusado", { esperaMs: cfg.backoffMs });
       return { acao: "backoff", restanteMs: cfg.backoffMs };
+    }
+
+    // Uma tentativa por cooldown: se o jogo desligou de novo, não fica ligando/desligando.
+    if (ultimaTentativa >= 0 && agora - ultimaTentativa < cfg.cooldownMs) {
+      return { acao: "cooldown", restanteMs: cfg.cooldownMs - (agora - ultimaTentativa) };
     }
 
     try {

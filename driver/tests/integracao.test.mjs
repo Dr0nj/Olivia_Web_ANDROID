@@ -547,3 +547,20 @@ test("retarget_config só registra quando a configuração muda de verdade", () 
   janela.Olivia.retarget.definir(true, 4);
   assert.equal(contar(), antes + 1, "repetir a mesma config não loga");
 });
+
+test("rtc_sempre só registra quando a opção muda de verdade", () => {
+  const { janela } = cenario();
+  const contar = () => janela.Olivia.log.todos()
+    .filter((e) => e.nome === "rtc_sempre").length;
+
+  // Garante um estado conhecido e conta a partir dele.
+  janela.Olivia.rtc.definir(true);
+  const antes = contar();
+  janela.Olivia.rtc.definir(true);
+  assert.equal(contar(), antes, "repetir a mesma opção não pode logar de novo");
+
+  janela.Olivia.rtc.definir(false);
+  assert.equal(contar(), antes + 1);
+  janela.Olivia.rtc.definir(false);
+  assert.equal(contar(), antes + 1, "desligar de novo não loga");
+});

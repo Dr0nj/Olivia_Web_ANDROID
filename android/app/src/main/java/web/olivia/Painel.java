@@ -19,6 +19,7 @@ import android.widget.ScrollView;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -31,6 +32,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -140,6 +142,10 @@ class Painel {
     private long retargetPedidoEm = 0;
     private boolean retargetPedidoLigado;
     private int retargetPedidoSqm;
+    // Guarda genérica dos checkboxes sincronizados pelo estado do JS: o setChecked
+    // programático não pode salvar nem chamar a ação de volta (senão o checkbox pisca).
+    private boolean aplicandoEstado = false;
+    private final Map<CompoundButton, long[]> pedidosEstado = new IdentityHashMap<>();
     private CheckBox rtcSempre;
     private String posAtual = "";
     private boolean recolhido = false;
@@ -446,9 +452,12 @@ class Painel {
         onda.setChecked(prefs.getBoolean("seguirOnda", false));
         onda.setPadding(0, d(4), 0, 0);
         onda.setOnCheckedChangeListener((b, marcado) -> {
-            prefs.edit().putBoolean("seguirOnda", marcado).apply();
+            // Efeito visual roda também no setChecked do estado; a ação, só no clique real.
             distanciaSeguir.setEnabled(!marcado);
             if (marcado) distanciaSeguir.setText("4");
+            if (aplicandoEstado) return;
+            marcarPedido(b);
+            prefs.edit().putBoolean("seguirOnda", marcado).apply();
             acoes.ligarOnda(marcado);
             nota(marcado ? "seguir knight ligado (vaga da onda)" : "seguir knight desligado");
         });
@@ -557,6 +566,8 @@ class Painel {
         nao.setChecked(prefs.getBoolean("antibot", true));
         nao.setPadding(0, d(2), 0, 0);
         nao.setOnCheckedChangeListener((b, marcado) -> {
+            if (aplicandoEstado) return;
+            marcarPedido(b);
             prefs.edit().putBoolean("antibot", marcado).apply();
             acoes.ligarAntiBot(marcado);
         });
@@ -570,6 +581,8 @@ class Painel {
         repetir.setChecked(prefs.getBoolean("repetir", true));
         repetir.setPadding(0, 0, 0, 0);
         repetir.setOnCheckedChangeListener((b, marcado) -> {
+            if (aplicandoEstado) return;
+            marcarPedido(b);
             if (prefs.getBoolean("repetir", true) == marcado) return;
             prefs.edit().putBoolean("repetir", marcado).apply();
             acoes.definirRepetir(marcado);
@@ -584,6 +597,8 @@ class Painel {
         autoTarefas.setChecked(prefs.getBoolean("autoTarefas", true));
         autoTarefas.setPadding(0, 0, 0, 0);
         autoTarefas.setOnCheckedChangeListener((b, marcado) -> {
+            if (aplicandoEstado) return;
+            marcarPedido(b);
             prefs.edit().putBoolean("autoTarefas", marcado).apply();
             acoes.ligarAutoTarefas(marcado);
         });
@@ -597,6 +612,8 @@ class Painel {
         pausaHumana.setChecked(prefs.getBoolean("pausaHumana", true));
         pausaHumana.setPadding(0, d(2), 0, 0);
         pausaHumana.setOnCheckedChangeListener((b, marcado) -> {
+            if (aplicandoEstado) return;
+            marcarPedido(b);
             prefs.edit().putBoolean("pausaHumana", marcado).apply();
             acoes.ligarPausaHumana(marcado);
             nota(marcado ? "pausas humanas ligadas" : "pausas humanas desligadas");
@@ -613,6 +630,8 @@ class Painel {
         reconexao.setChecked(prefs.getBoolean("reconexao", true));
         reconexao.setPadding(0, d(2), 0, 0);
         reconexao.setOnCheckedChangeListener((b, marcado) -> {
+            if (aplicandoEstado) return;
+            marcarPedido(b);
             prefs.edit().putBoolean("reconexao", marcado).apply();
             acoes.ligarReconexao(marcado);
         });
@@ -638,6 +657,8 @@ class Painel {
         area.setChecked(prefs.getBoolean("area", false));
         area.setPadding(0, d(5), 0, 0);
         area.setOnCheckedChangeListener((b, marcado) -> {
+            if (aplicandoEstado) return;
+            marcarPedido(b);
             prefs.edit().putBoolean("area", marcado).apply();
             acoes.ligarArea(marcado);
             nota(marcado ? "área ligada (círculo de 5 sqm)" : "área desligada");
@@ -705,6 +726,8 @@ class Painel {
         rtcSempre.setChecked(prefs.getBoolean("rtcSempre", false));
         rtcSempre.setPadding(0, d(5), 0, 0);
         rtcSempre.setOnCheckedChangeListener((b, marcado) -> {
+            if (aplicandoEstado) return;
+            marcarPedido(b);
             prefs.edit().putBoolean("rtcSempre", marcado).apply();
             acoes.ligarRtcSempre(marcado);
             nota(marcado ? "RTC será mantido ligado" : "RTC não será mais forçado");
@@ -1427,9 +1450,8 @@ class Painel {
                 }
             }
 
-            if (rota != null && totalRota > 0
-                    && repetir.isChecked() != rota.optBoolean("repetir", true)) {
-                repetir.setChecked(rota.optBoolean("repetir", true));
+            if (rota != null && totalRota > 0) {
+                sincronizar(repetir, rota.optBoolean("repetir", true));
             }
 
             String nomeAlvo = s.optString("seguirNome", "");
@@ -1445,25 +1467,25 @@ class Painel {
 
             if (antibot != null) {
                 boolean ligado = antibot.optBoolean("ligado", true);
-                if (nao.isChecked() != ligado) nao.setChecked(ligado);
+                sincronizar(nao, ligado);
             }
 
             JSONObject pausa = s.optJSONObject("pausaHumana");
             if (pausa != null) {
                 boolean lig = pausa.optBoolean("ligado", true);
-                if (pausaHumana.isChecked() != lig) pausaHumana.setChecked(lig);
+                sincronizar(pausaHumana, lig);
             }
 
             JSONObject recon = s.optJSONObject("reconexao");
             if (recon != null && reconexao != null) {
                 boolean lig = recon.optBoolean("ligado", true);
-                if (reconexao.isChecked() != lig) reconexao.setChecked(lig);
+                sincronizar(reconexao, lig);
             }
 
             JSONObject areaJson = s.optJSONObject("area");
             if (areaJson != null && area != null) {
                 boolean lig = areaJson.optBoolean("ligado", false);
-                if (area.isChecked() != lig) area.setChecked(lig);
+                sincronizar(area, lig);
             }
             JSONObject retargetJson = s.optJSONObject("retarget");
             if (retargetJson != null && retarget != null) {
@@ -1495,17 +1517,17 @@ class Painel {
             JSONObject rtcJson = s.optJSONObject("rtc");
             if (rtcJson != null && rtcSempre != null) {
                 boolean lig = rtcJson.optBoolean("ligado", false);
-                if (rtcSempre.isChecked() != lig) rtcSempre.setChecked(lig);
+                sincronizar(rtcSempre, lig);
             }
 
             if (ondaJson != null && onda != null) {
                 boolean lig = ondaJson.optBoolean("ligado", false);
-                if (onda.isChecked() != lig) onda.setChecked(lig);
+                sincronizar(onda, lig);
             }
 
             if (autoTarefasJson != null) {
                 boolean ligado = autoTarefasJson.optBoolean("ligado", true);
-                if (autoTarefas.isChecked() != ligado) autoTarefas.setChecked(ligado);
+                sincronizar(autoTarefas, ligado);
             }
 
             if (jogo != null && !jogo.optBoolean("emJogo", false)) {
@@ -1518,6 +1540,25 @@ class Painel {
 
     void nota(String texto) {
         nota.setText(texto);
+    }
+
+    /** Marca o valor pedido pelo usuário: estados antigos do JS são ignorados por 2 s. */
+    private void marcarPedido(CompoundButton box) {
+        if (box != null) pedidosEstado.put(box, new long[]{System.currentTimeMillis(), box.isChecked() ? 1 : 0});
+    }
+
+    private boolean pedidoPendente(CheckBox box, boolean valor) {
+        long[] pedido = pedidosEstado.get(box);
+        return pedido != null && System.currentTimeMillis() - pedido[0] < 2000
+                && (pedido[1] != 0) != valor;
+    }
+
+    /** Aplica o estado do JS sem disparar o listener: não salva nem chama a ação de volta. */
+    private void sincronizar(CheckBox box, boolean valor) {
+        if (box == null || box.isChecked() == valor || pedidoPendente(box, valor)) return;
+        aplicandoEstado = true;
+        box.setChecked(valor);
+        aplicandoEstado = false;
     }
 
     void evento(String json) {

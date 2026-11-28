@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.16
+// @version      0.9.17
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -1686,13 +1686,18 @@ function criarRtcSempre(opcoes) {
     maxFalhas: 3,
     backoffMs: 60000,
     pedidoMs: 8000,
+    // Não religa a cada 2 s: depois de uma tentativa espera o cooldown.
+    cooldownMs: 15000,
+    // Só considera "ligado de verdade" (e zera as falhas) depois disso.
+    estavelMs: 5000,
   }, opcoes || {});
 
   let ativo = !!cfg.ligado;
   let falhas = 0;
   let bloqueadoAte = 0;
   let pedidoEm = -1;
-  let ultimaTentativa = 0;
+  let ultimaTentativa = -1;
+  let ligadoDesde = 0;
 
   function logar(nome, dados) {
     if (cfg.log) cfg.log(nome, Object.assign({}, dados || {}));
@@ -1703,6 +1708,8 @@ function criarRtcSempre(opcoes) {
     falhas = 0;
     bloqueadoAte = 0;
     pedidoEm = -1;
+    ligadoDesde = 0;
+    ultimaTentativa = -1;
     return ativo;
   }
 
@@ -1738,12 +1745,16 @@ function criarRtcSempre(opcoes) {
     }
 
     if (aa.on === true) {
-      if (falhas !== 0 || bloqueadoAte !== 0) {
+      if (ligadoDesde === 0) ligadoDesde = agora;
+      // Só zera as falhas depois que o RTC ficou ligado de verdade por alguns segundos;
+      // se o jogo desligar logo em seguida, a próxima tentativa ainda conta como falha.
+      if (falhas !== 0 && agora - ligadoDesde >= cfg.estavelMs) {
         falhas = 0;
         bloqueadoAte = 0;
       }
       return { acao: "ativo" };
     }
+    ligadoDesde = 0;
 
     if (agora < bloqueadoAte) {
       return { acao: "backoff", restanteMs: bloqueadoAte - agora };
@@ -1755,6 +1766,11 @@ function criarRtcSempre(opcoes) {
       falhas = 0;
       logar("rtc_recusado", { esperaMs: cfg.backoffMs });
       return { acao: "backoff", restanteMs: cfg.backoffMs };
+    }
+
+    // Uma tentativa por cooldown: se o jogo desligou de novo, não fica ligando/desligando.
+    if (ultimaTentativa >= 0 && agora - ultimaTentativa < cfg.cooldownMs) {
+      return { acao: "cooldown", restanteMs: cfg.cooldownMs - (agora - ultimaTentativa) };
     }
 
     try {
@@ -4426,7 +4442,9 @@ function criarPainel(opcoes) {
     onda: {
       ligado: function () { return ondaLigada; },
       definir: function (v) {
-        ondaLigada = !!v;
+        const novo = !!v;
+        if (ondaLigada === novo) return ondaLigada;
+        ondaLigada = novo;
         try { localStorage.setItem("ovw.seguirOnda", ondaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
         motor.definirOnda(ondaLigada);
         if (seguirSalvo) {
@@ -4450,7 +4468,9 @@ function criarPainel(opcoes) {
     autoTarefas: {
       ligado: function () { return autoTarefas; },
       definir: function (v) {
-        autoTarefas = !!v;
+        const novo = !!v;
+        if (autoTarefas === novo) return autoTarefas;
+        autoTarefas = novo;
         if (!autoTarefas) tarefas.zerar();
         try { localStorage.setItem("ovw.autoTarefas", autoTarefas ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
@@ -4463,7 +4483,9 @@ function criarPainel(opcoes) {
     pausaHumana: {
       ligado: function () { return motor.humano.ligado(); },
       definir: function (v) {
-        pausaHumana = !!v;
+        const novo = !!v;
+        if (pausaHumana === novo) return pausaHumana;
+        pausaHumana = novo;
         motor.humano.definirLigado(pausaHumana);
         try { localStorage.setItem("ovw.pausaHumana", pausaHumana ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
@@ -4471,7 +4493,9 @@ function criarPainel(opcoes) {
     reconexao: {
       ligado: function () { return reconexaoLigada; },
       definir: function (v) {
-        reconexaoLigada = !!v;
+        const novo = !!v;
+        if (reconexaoLigada === novo) return reconexaoLigada;
+        reconexaoLigada = novo;
         try { localStorage.setItem("ovw.reconexao", reconexaoLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
       estado: function () {
@@ -4482,7 +4506,9 @@ function criarPainel(opcoes) {
       otimizar: function () { return otimizarArea(false); },
       ligado: function () { return areaLigada; },
       definir: function (v) {
-        areaLigada = !!v;
+        const novo = !!v;
+        if (areaLigada === novo) return areaLigada;
+        areaLigada = novo;
         try { localStorage.setItem("ovw.area", areaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
         if (areaLigada) {
           otimizarArea(false);
@@ -4531,7 +4557,9 @@ function criarPainel(opcoes) {
     rtc: {
       ligado: function () { return rtcSempre; },
       definir: function (v) {
-        rtcSempre = !!v;
+        const novo = !!v;
+        if (rtcSempre === novo) return rtcSempre;
+        rtcSempre = novo;
         rtc.definirLigado(rtcSempre);
         try { localStorage.setItem(CHAVE_RTC, rtcSempre ? "1" : "0"); } catch (e) { /* sem storage */ }
         registro.evento("rtc_sempre", { ligado: rtcSempre });

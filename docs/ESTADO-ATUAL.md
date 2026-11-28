@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.16
+**Versão:** 0.9.17
 **Data:** 2026-11-28
-**Commit:** release v0.9.16
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.16
+**Commit:** release v0.9.17
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.17
 **APK:** `android/app/build/olivia-web.apk` (153 KB)
 
 ## Validado
 
-- **151 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **154 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -18,6 +18,22 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.17 (checkboxes sem piscar)
+
+1. **Trava genérica nos checkboxes**: o `setChecked` que vem do estado do JS não salva
+   nem chama a ação de volta. Vale para anti-bot, pausas humanas, reconexão, área,
+   retarget (já tinha), RTC, seguir knight, auto-tarefas e repetir rota.
+2. **Estado antigo ignorado por 2 s**: depois que o usuário muda um checkbox, um
+   snapshot atrasado do JS não desfaz o clique. É o mesmo padrão da 0.9.14, agora em
+   todos os controles sincronizados.
+3. **RTC sem loop de 2 s**: o watchdog espera **15 s** entre tentativas e só zera as
+   falhas depois de **5 s** com o RTC realmente ligado; 3 falhas seguidas → backoff de
+   **60 s**. Antes ele religava a cada 2 s e o contador de falhas nunca chegava no limite.
+4. **Setters idempotentes**: `rtc`, `area`, `onda`, `autoTarefas`, `pausaHumana` e
+   `reconexao` não relogam nem reexecutam a ação quando o valor é o mesmo.
+5. **Testes**: 154 no total; novos cobrem o cooldown do RTC, a estabilidade das falhas
+   e `rtc_sempre` só uma vez por mudança real.
 
 ## Mudanças da 0.9.16 (área igual ao desktop)
 

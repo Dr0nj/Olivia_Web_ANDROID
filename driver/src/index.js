@@ -747,7 +747,9 @@ import { criarTarefas } from "./tarefas.js";
     onda: {
       ligado: function () { return ondaLigada; },
       definir: function (v) {
-        ondaLigada = !!v;
+        const novo = !!v;
+        if (ondaLigada === novo) return ondaLigada;
+        ondaLigada = novo;
         try { localStorage.setItem("ovw.seguirOnda", ondaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
         motor.definirOnda(ondaLigada);
         if (seguirSalvo) {
@@ -771,7 +773,9 @@ import { criarTarefas } from "./tarefas.js";
     autoTarefas: {
       ligado: function () { return autoTarefas; },
       definir: function (v) {
-        autoTarefas = !!v;
+        const novo = !!v;
+        if (autoTarefas === novo) return autoTarefas;
+        autoTarefas = novo;
         if (!autoTarefas) tarefas.zerar();
         try { localStorage.setItem("ovw.autoTarefas", autoTarefas ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
@@ -784,7 +788,9 @@ import { criarTarefas } from "./tarefas.js";
     pausaHumana: {
       ligado: function () { return motor.humano.ligado(); },
       definir: function (v) {
-        pausaHumana = !!v;
+        const novo = !!v;
+        if (pausaHumana === novo) return pausaHumana;
+        pausaHumana = novo;
         motor.humano.definirLigado(pausaHumana);
         try { localStorage.setItem("ovw.pausaHumana", pausaHumana ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
@@ -792,7 +798,9 @@ import { criarTarefas } from "./tarefas.js";
     reconexao: {
       ligado: function () { return reconexaoLigada; },
       definir: function (v) {
-        reconexaoLigada = !!v;
+        const novo = !!v;
+        if (reconexaoLigada === novo) return reconexaoLigada;
+        reconexaoLigada = novo;
         try { localStorage.setItem("ovw.reconexao", reconexaoLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
       },
       estado: function () {
@@ -803,7 +811,9 @@ import { criarTarefas } from "./tarefas.js";
       otimizar: function () { return otimizarArea(false); },
       ligado: function () { return areaLigada; },
       definir: function (v) {
-        areaLigada = !!v;
+        const novo = !!v;
+        if (areaLigada === novo) return areaLigada;
+        areaLigada = novo;
         try { localStorage.setItem("ovw.area", areaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
         if (areaLigada) {
           otimizarArea(false);
@@ -852,7 +862,9 @@ import { criarTarefas } from "./tarefas.js";
     rtc: {
       ligado: function () { return rtcSempre; },
       definir: function (v) {
-        rtcSempre = !!v;
+        const novo = !!v;
+        if (rtcSempre === novo) return rtcSempre;
+        rtcSempre = novo;
         rtc.definirLigado(rtcSempre);
         try { localStorage.setItem(CHAVE_RTC, rtcSempre ? "1" : "0"); } catch (e) { /* sem storage */ }
         registro.evento("rtc_sempre", { ligado: rtcSempre });

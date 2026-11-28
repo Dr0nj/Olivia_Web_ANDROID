@@ -88,6 +88,7 @@ test("servidor recusando entra em backoff em vez de martelar", () => {
     agora: r.agora,
     log: (nome) => logs.push(nome),
     maxFalhas: 2,
+    cooldownMs: 0,
     backoffMs: 60000,
   });
 
@@ -99,4 +100,65 @@ test("servidor recusando entra em backoff em vez de martelar", () => {
   assert.ok(logs.includes("rtc_recusado"));
   r.avancar(60000);
   assert.equal(rtc.passo().acao, "reativado");
+});
+
+test("não religa em loop a cada 2 s: espera o cooldown", () => {
+  const r = relogio(0);
+  const a = {
+    aa: { on: false },
+    envios: 0,
+    mandarAA() { this.envios += 1; this.aa.on = false; },
+  };
+  const rtc = criarRtcSempre({
+    ligado: true,
+    obter: () => a,
+    agora: r.agora,
+    cooldownMs: 15000,
+    maxFalhas: 3,
+    backoffMs: 60000,
+  });
+
+  assert.equal(rtc.passo().acao, "reativado");
+  r.avancar(2000);
+  assert.equal(rtc.passo().acao, "cooldown", "2 s depois ainda não religa");
+  r.avancar(12999);
+  assert.equal(rtc.passo().acao, "cooldown");
+  assert.equal(a.envios, 1);
+  r.avancar(1);
+  assert.equal(rtc.passo().acao, "reativado");
+  assert.equal(a.envios, 2);
+  r.avancar(15000);
+  assert.equal(rtc.passo().acao, "reativado");
+  assert.equal(a.envios, 3);
+  r.avancar(15000);
+  assert.equal(rtc.passo().acao, "backoff");
+  assert.equal(a.envios, 3, "3 falhas seguidas viram backoff");
+});
+
+test("falhas só zeram depois que o RTC fica ligado por alguns segundos", () => {
+  const r = relogio(0);
+  const a = {
+    aa: { on: false },
+    envios: 0,
+    mandarAA() { this.envios += 1; this.aa.on = true; },
+  };
+  const rtc = criarRtcSempre({
+    ligado: true,
+    obter: () => a,
+    agora: r.agora,
+    cooldownMs: 0,
+    estavelMs: 5000,
+    maxFalhas: 3,
+    backoffMs: 60000,
+  });
+
+  assert.equal(rtc.passo().acao, "reativado");
+  r.avancar(1000);
+  assert.equal(rtc.passo().acao, "ativo");
+  a.aa.on = false;
+  assert.equal(rtc.passo().acao, "reativado", "caiu antes de 5 s: conta falha");
+  a.aa.on = false;
+  assert.equal(rtc.passo().acao, "reativado");
+  a.aa.on = false;
+  assert.equal(rtc.passo().acao, "backoff");
 });

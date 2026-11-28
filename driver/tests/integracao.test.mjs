@@ -194,6 +194,40 @@ test("o bundle expõe seguir knight e vira para o alvo na vaga", () => {
   janela.Olivia.parar();
 });
 
+test("seguir sobrevive ao reinício e reencontra o alvo pelo nome", () => {
+  const primeiro = cenario();
+  primeiro.J.miId = 1;
+  primeiro.J.ents.set("j1", { x: 0, y: 10, piso: 0, mundo: 0 });
+  primeiro.J.ents.set("j7", { x: 10, y: 10, piso: 0, mundo: 0, nombre: "Bugokina" });
+  primeiro.janela.Olivia.seguir(7, 2);
+
+  const salvo = JSON.parse(primeiro.janela.localStorage.getItem("ovw.seguirAlvo"));
+  assert.equal(salvo.nome, "Bugokina");
+  assert.equal(salvo.id, "7");
+
+  // Reinicia o driver com o mesmo localStorage; o alvo volta com outro ID.
+  const segundo = cenario({ localStorage: primeiro.janela.localStorage });
+  segundo.J.miId = 1;
+  segundo.J.ents.set("j1", { x: 0, y: 10, piso: 0, mundo: 0 });
+  segundo.J.ents.set("j9", { x: 10, y: 10, piso: 0, mundo: 0, nombre: "Bugokina" });
+
+  avancar(1000);
+  assert.equal(segundo.janela.Olivia.modo(), "seguir");
+  assert.equal(segundo.janela.Olivia.motor.seguindoId(), "9");
+  assert.ok(segundo.janela.Olivia.log.todos().some(function (e) {
+    return e.nome === "seguir_retomado" && e.alvo === "9" && e.alvoNome === "Bugokina";
+  }), "não registrou a retomada do seguir");
+  const atualizado = JSON.parse(segundo.janela.localStorage.getItem("ovw.seguirAlvo"));
+  assert.equal(atualizado.id, "9");
+
+  // Parar explícito esquece o alvo; ele não volta sozinho.
+  segundo.janela.Olivia.parar();
+  assert.equal(segundo.janela.localStorage.getItem("ovw.seguirAlvo"), null);
+  segundo.J.ents.set("j11", { x: 10, y: 10, piso: 0, mundo: 0, nombre: "Bugokina" });
+  avancar(1000);
+  assert.equal(segundo.janela.Olivia.modo(), "parada");
+});
+
 test("responde «Não» com /ebr e conta na sessão", async () => {
   const { janela, Red, enviados } = cenario();
   Red.emitir("eresBot", { id: "jan-1", seg: 20, b: [{ tx: "Sí", k: "a" }, { tx: "No", k: "b" }] });

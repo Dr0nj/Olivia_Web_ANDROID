@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Olivia Web
 // @namespace    olivia.web
-// @version      0.9.14
+// @version      0.9.15
 // @description  Olivia no cliente web do LOW: desafio, rotas, ponto de caça, seguidor e sessão.
 // @match        https://lowmmorpg.com/juego/*
 // @match        https://*.lowmmorpg.com/juego/*
@@ -2787,11 +2787,15 @@ function criarMotor(opcoes) {
     ultimoGiro = 0;
     pausaInterface = false;
     limparDesvio();
-    registro.evento("seguir_inicio", {
+    const evento = o.evento || (o.retomada ? "seguir_retomado" : "seguir_inicio");
+    const dadosEvento = {
       alvo: seguindoId,
       sqm: seguidor.alcanceEfetivo(),
       onda: seguidor.onda(),
-    });
+    };
+    if (o.nome) dadosEvento.alvoNome = o.nome;
+    if (o.de) dadosEvento.de = o.de;
+    registro.evento(evento, dadosEvento);
     return true;
   }
 
@@ -3315,14 +3319,19 @@ function criarPainel(opcoes) {
       try {
         const pontos = lerRota(campoRota.value || "[]");
         localStorage.setItem("ovw.rota", campoRota.value);
-        motor.iniciarRota(pontos, "painel-web", { repetir: partes.repetir.checked });
+        if (window.Olivia && window.Olivia.rota) {
+          window.Olivia.rota(pontos, { origem: "painel-web", repetir: partes.repetir.checked });
+        } else {
+          motor.iniciarRota(pontos, "painel-web", { repetir: partes.repetir.checked });
+        }
       } catch (e) {
         alert("Rota inválida: " + e.message);
       }
       atualizar();
     }));
     acoes.appendChild(botao("Parar", function () {
-      motor.parar("painel");
+      if (window.Olivia && window.Olivia.parar) window.Olivia.parar();
+      else motor.parar("painel");
       atualizar();
     }));
     raiz.appendChild(acoes);
@@ -3500,7 +3509,12 @@ function criarPainel(opcoes) {
       if (!onda) {
         try { localStorage.setItem("ovw.seguirSqm", String(dist)); } catch (e) { /* sem storage */ }
       }
-      motor.seguir(id, onda ? 4 : dist, { onda: onda });
+      const alvo = onda ? 4 : dist;
+      if (window.Olivia && window.Olivia.seguir) {
+        window.Olivia.seguir(id, alvo, { onda: onda });
+      } else {
+        motor.seguir(id, alvo, { onda: onda });
+      }
       atualizar();
     }));
     raiz.appendChild(seguir);
@@ -3631,7 +3645,11 @@ function criarPainel(opcoes) {
   const CHAVE_CACA = "ovw.caca";
   const CHAVE_RTC = "ovw.rtcSempre";
   const CHAVE_RETARGET = "ovw.retarget";
+  const CHAVE_SEGUIR = "ovw.seguirAlvo";
   const VALIDADE_RETOMADA_MS = 10 * 60000;
+  // O alvo do seguir pode ficar offline e voltar; 24 h é tempo suficiente para
+  // sobreviver a uma atualização/reconexão sem virar alvo eterno.
+  const VALIDADE_SEGUIR_MS = 24 * 60 * 60000;
 
   function ler(chave) {
     try {
@@ -3648,6 +3666,23 @@ function criarPainel(opcoes) {
 
   let rotaAtiva = false;
   let sessaoTentada = false;
+  let seguirSalvo = (function () {
+    const s = ler(CHAVE_SEGUIR);
+    if (!s || (!s.nome && !s.id)) return null;
+    if (s.em && Date.now() - Number(s.em) > VALIDADE_SEGUIR_MS) {
+      try { localStorage.removeItem(CHAVE_SEGUIR); } catch (e) { /* sem storage */ }
+      return null;
+    }
+    return {
+      nome: String(s.nome || "").trim(),
+      id: s.id != null ? String(s.id) : "",
+      sqm: Number.isFinite(Number(s.sqm))
+        ? Math.max(0, Math.min(8, Math.round(Number(s.sqm))))
+        : 1,
+      onda: !!s.onda,
+      em: Number(s.em) || Date.now(),
+    };
+  })();
   try {
     const inicial = ler(CHAVE_ROTA);
     rotaAtiva = !!(inicial && inicial.ativa);
@@ -3863,6 +3898,7 @@ function criarPainel(opcoes) {
       return false;
     }
 
+    esquecerSeguirSalvo();
     motor.iniciarRota(guardado.pontos, "retomada", {
       repetir: !!guardado.repetir,
       atraso: guardado.atraso || null,
@@ -3883,12 +3919,20 @@ function criarPainel(opcoes) {
       motor.sessao.ouroAtual(sup.oro);
     }
     const supResumo = sup ? motor.suprimentos.resumo(agora) : null;
+    const idSeguir = motor.seguindoId();
+    const alvoSeguir = idSeguir != null ? ponte.jogadores().find(function (j) {
+      return String(j.id) === String(idSeguir);
+    }) : null;
+    const nomeSeguir = (alvoSeguir && alvoSeguir.nome)
+      || (seguirSalvo && seguirSalvo.nome)
+      || null;
     return {
       modo: motor.modo(),
       pausaUi: motor.pausaInterface(),
       comandando: motor.comandando(),
       rodando: motor.rodando(),
-      seguir: motor.seguindoId(),
+      seguir: idSeguir,
+      seguirNome: nomeSeguir,
       automacao: { suspensa: suspenso },
       rota: {
         total: motor.rota.total(),
@@ -4103,6 +4147,116 @@ function criarPainel(opcoes) {
     return true;
   }
 
+  function normalizarNomeSeguir(nome) {
+    return String(nome || "").trim().toLocaleLowerCase();
+  }
+
+  function jogadorSeguirSalvo() {
+    if (!seguirSalvo) return null;
+    const lista = ponte.jogadores();
+    const nome = normalizarNomeSeguir(seguirSalvo.nome);
+    if (nome) {
+      const porNome = lista.find(function (j) {
+        return normalizarNomeSeguir(j.nome) === nome;
+      });
+      if (porNome) return porNome;
+    }
+    if (seguirSalvo.id) {
+      const porId = lista.find(function (j) {
+        return String(j.id) === String(seguirSalvo.id);
+      });
+      if (porId) return porId;
+    }
+    return null;
+  }
+
+  function guardarSeguirSalvo(dados) {
+    seguirSalvo = Object.assign({}, dados, { em: Date.now() });
+    gravar(CHAVE_SEGUIR, seguirSalvo);
+  }
+
+  function esquecerSeguirSalvo() {
+    const tinha = !!seguirSalvo;
+    seguirSalvo = null;
+    try { localStorage.removeItem(CHAVE_SEGUIR); } catch (e) { /* sem storage */ }
+    if (tinha) registro.evento("seguir_esquecido", {});
+  }
+
+  function iniciarSeguir(id, distancia, opcoes) {
+    const o = Object.assign({}, opcoes || {});
+    if (o.onda === undefined) o.onda = ondaLigada;
+    let alvo = ponte.jogadores().find(function (j) {
+      return String(j.id) === String(id);
+    }) || null;
+    if (!alvo) alvo = ponte.entidade(id);
+    const informado = String(o.nome || "").trim();
+    const nomeEntidade = String((alvo && alvo.nome) || "").trim();
+    const nome = nomeEntidade || (informado && informado !== "?" ? informado : "");
+    const ok = motor.seguir(id, distancia, o);
+    if (ok) {
+      const sqm = o.onda ? 4 : (Number.isFinite(Number(distancia))
+        ? Number(distancia) : motor.seguidor.alcance());
+      guardarSeguirSalvo({
+        nome: nome,
+        id: String(id),
+        sqm: Math.max(0, Math.min(8, Math.round(sqm))),
+        onda: !!o.onda,
+      });
+    }
+    return ok;
+  }
+
+  // Reencontra o alvo pelo nome (o ID pode mudar depois de relogar) e retoma.
+  // Só age quando o motor está parado ou quando o alvo antigo desapareceu.
+  function tentarRetomarSeguir() {
+    if (!seguirSalvo || !ligado || suspenso || document.hidden === true) return;
+    if (!ponte.pronto()) return;
+    if (ponte.interfaceAberta && ponte.interfaceAberta()) return;
+    const st = ponte.estado();
+    if (!st.emJogo || !st.vivo) return;
+    const alvo = jogadorSeguirSalvo();
+    if (!alvo) return;
+    const idAtual = motor.seguindoId();
+    const modo = motor.modo();
+    const nome = String(alvo.nome || seguirSalvo.nome || "").trim();
+
+    if (modo === "seguir") {
+      if (idAtual != null && String(idAtual) === String(alvo.id)) {
+        if (!seguirSalvo.nome && nome) {
+          guardarSeguirSalvo(Object.assign({}, seguirSalvo, { id: String(alvo.id), nome: nome }));
+        }
+        return;
+      }
+      // Ainda existe uma entidade válida no ID antigo: não rouba o alvo atual.
+      const aindaExiste = idAtual != null && ponte.jogadores().some(function (j) {
+        return String(j.id) === String(idAtual);
+      });
+      if (aindaExiste) return;
+      motor.seguir(alvo.id, seguirSalvo.sqm, {
+        onda: seguirSalvo.onda,
+        nome: nome,
+        evento: "seguir_reconectado",
+        de: idAtual == null ? null : String(idAtual),
+      });
+      guardarSeguirSalvo(Object.assign({}, seguirSalvo, {
+        id: String(alvo.id),
+        nome: nome,
+      }));
+      return;
+    }
+
+    if (modo !== "parada") return;
+    motor.seguir(alvo.id, seguirSalvo.sqm, {
+      onda: seguirSalvo.onda,
+      nome: nome,
+      evento: "seguir_retomado",
+    });
+    guardarSeguirSalvo(Object.assign({}, seguirSalvo, {
+      id: String(alvo.id),
+      nome: nome,
+    }));
+  }
+
   function vigiarVisibilidade() {
     if (document.hidden === true) suspenderAutomacao("oculto");
     else retomarAutomacao("visivel");
@@ -4177,6 +4331,7 @@ function criarPainel(opcoes) {
   setInterval(vigiarConexao, 5000);
   setInterval(passoArea, 700);
   setInterval(passoRetarget, 700);
+  setInterval(tentarRetomarSeguir, 1000);
   // Confirmação/expiração das repetições de task (prazo de 5 s).
   setInterval(function () { tarefas.passo(); }, 1000);
   // RTC sempre ligado: verifica devagar e só age quando o cliente desligou.
@@ -4193,6 +4348,7 @@ function criarPainel(opcoes) {
     log: registro,
     rota: function (pontos, opcoes) {
       const o = opcoes || {};
+      esquecerSeguirSalvo();
       return motor.iniciarRota(pontos, o.origem || "console", o);
     },
     caca: {
@@ -4207,9 +4363,7 @@ function criarPainel(opcoes) {
       padrao: function () { return Object.assign({}, CACA_PADRAO); },
     },
     seguir: function (id, distancia, opcoes) {
-      const o = Object.assign({}, opcoes || {});
-      if (o.onda === undefined) o.onda = ondaLigada;
-      return motor.seguir(id, distancia, o);
+      return iniciarSeguir(id, distancia, opcoes);
     },
     onda: {
       ligado: function () { return ondaLigada; },
@@ -4217,6 +4371,12 @@ function criarPainel(opcoes) {
         ondaLigada = !!v;
         try { localStorage.setItem("ovw.seguirOnda", ondaLigada ? "1" : "0"); } catch (e) { /* sem storage */ }
         motor.definirOnda(ondaLigada);
+        if (seguirSalvo) {
+          guardarSeguirSalvo(Object.assign({}, seguirSalvo, {
+            onda: ondaLigada,
+            sqm: ondaLigada ? 4 : seguirSalvo.sqm,
+          }));
+        }
         publicar();
         return ondaLigada;
       },
@@ -4325,11 +4485,15 @@ function criarPainel(opcoes) {
         return Object.assign({ ligado: rtcSempre }, rtc.estado());
       },
     },
-    parar: function () { motor.parar("console"); },
+    parar: function () {
+      esquecerSeguirSalvo();
+      motor.parar("console");
+    },
     modo: function () { return motor.modo(); },
     suspender: function () { suspenderAutomacao("pedido"); },
     retomarMotor: function () { retomarAutomacao("pedido"); },
     zerar: function () {
+      esquecerSeguirSalvo();
       motor.sessao.reset();
       antibot.zerar();
       tarefas.zerar();

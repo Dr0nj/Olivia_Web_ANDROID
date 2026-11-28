@@ -72,7 +72,11 @@ public class MainActivity extends Activity {
             @Override public void seguir(long id) { chamarJs("Olivia.seguir(" + id + ")"); }
             @Override public void seguir(long id, int distancia) { chamarJs("Olivia.seguir(" + id + ", " + distancia + ")"); }
             @Override public void seguir(long id, int distancia, boolean onda) {
-                chamarJs("Olivia.seguir(" + id + ", " + distancia + ", { onda: " + onda + " })");
+                seguir(id, distancia, onda, null);
+            }
+            @Override public void seguir(long id, int distancia, boolean onda, String nome) {
+                chamarJs("Olivia.seguir(" + id + ", " + distancia + ", { onda: " + onda
+                        + ", nome: " + JSONObject.quote(nome == null ? "" : nome) + " })");
             }
             @Override public void ligarOnda(boolean ligado) { chamarJs("Olivia.onda.definir(" + ligado + ")"); }
             @Override public void ligarAntiBot(boolean ligado) { chamarJs("Olivia.antibot.definirLigado(" + ligado + ")"); }

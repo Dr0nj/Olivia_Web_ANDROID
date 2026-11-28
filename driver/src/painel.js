@@ -171,14 +171,19 @@ export function criarPainel(opcoes) {
       try {
         const pontos = lerRota(campoRota.value || "[]");
         localStorage.setItem("ovw.rota", campoRota.value);
-        motor.iniciarRota(pontos, "painel-web", { repetir: partes.repetir.checked });
+        if (window.Olivia && window.Olivia.rota) {
+          window.Olivia.rota(pontos, { origem: "painel-web", repetir: partes.repetir.checked });
+        } else {
+          motor.iniciarRota(pontos, "painel-web", { repetir: partes.repetir.checked });
+        }
       } catch (e) {
         alert("Rota inválida: " + e.message);
       }
       atualizar();
     }));
     acoes.appendChild(botao("Parar", function () {
-      motor.parar("painel");
+      if (window.Olivia && window.Olivia.parar) window.Olivia.parar();
+      else motor.parar("painel");
       atualizar();
     }));
     raiz.appendChild(acoes);
@@ -356,7 +361,12 @@ export function criarPainel(opcoes) {
       if (!onda) {
         try { localStorage.setItem("ovw.seguirSqm", String(dist)); } catch (e) { /* sem storage */ }
       }
-      motor.seguir(id, onda ? 4 : dist, { onda: onda });
+      const alvo = onda ? 4 : dist;
+      if (window.Olivia && window.Olivia.seguir) {
+        window.Olivia.seguir(id, alvo, { onda: onda });
+      } else {
+        motor.seguir(id, alvo, { onda: onda });
+      }
       atualizar();
     }));
     raiz.appendChild(seguir);

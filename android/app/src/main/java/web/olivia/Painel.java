@@ -52,6 +52,7 @@ class Painel {
         void seguir(long id);
         void seguir(long id, int distancia);
         void seguir(long id, int distancia, boolean onda);
+        void seguir(long id, int distancia, boolean onda, String nome);
         void ligarOnda(boolean ligado);
         void ligarAntiBot(boolean ligado);
         void ligarAutoTarefas(boolean ligado);
@@ -122,6 +123,7 @@ class Painel {
     private CheckBox onda;
     private TextView alvoSeguir;
     private long idSeguir = 0;
+    private String nomeSeguir = "";
     private CheckBox reconexao;
     private EditText campoRota;
     private TextView textoRota;
@@ -509,6 +511,7 @@ class Painel {
                 String rotulo = nome + "  (" + id + (dist >= 0 ? " · " + dist + " sqm" : "") + ")";
                 Button b = botao(rotulo, v -> {
                     idSeguir = id;
+                    nomeSeguir = nome;
                     alvoSeguir.setText("alvo: " + nome + " (" + id + ")");
                     nota("alvo " + nome);
                 });
@@ -535,7 +538,7 @@ class Painel {
         boolean knight = onda != null && onda.isChecked();
         sqm = knight ? 4 : Math.max(0, Math.min(8, sqm));
         prefs.edit().putInt("seguirSqm", sqm).apply();
-        acoes.seguir(idSeguir, sqm, knight);
+        acoes.seguir(idSeguir, sqm, knight, nomeSeguir);
         voltarHub();
         nota("seguindo " + idSeguir + " · " + sqm + " sqm" + (knight ? " (onda)" : ""));
     }
@@ -1429,9 +1432,11 @@ class Painel {
                 repetir.setChecked(rota.optBoolean("repetir", true));
             }
 
+            String nomeAlvo = s.optString("seguirNome", "");
             estado.setText(pausaUi ? "menu do jogo · pausado"
                     : "seguir".equals(modo) && s.has("seguir") && !s.isNull("seguir")
-                    ? "seguindo " + s.optString("seguir") + (ondaAtiva ? " · onda" : "")
+                    ? "seguindo " + (nomeAlvo.isEmpty() ? s.optString("seguir") : nomeAlvo)
+                      + (ondaAtiva ? " · onda" : "")
                     : modo);
             // Mantém o cabeçalho coerente com o estado recolhido.
             estado.setVisibility(recolhido ? View.GONE : View.VISIBLE);

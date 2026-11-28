@@ -67,7 +67,10 @@ por sessão, humanização, painel) e o protocolo do anti-bot (`/ebr <id> <chave
   (nome, id e distância) e a **distância em sqm** (0 = mesmo tile, até 8). O personagem
   acompanha o alvo e para na distância escolhida; se o alvo sair do alcance do
   cliente, o modo continua ligado (aviso `seguir_alvo_fora` uma vez) e volta a
-  seguir sozinho quando ele reaparece. Só **Parar** encerra.
+  seguir sozinho quando ele reaparece. O alvo é salvo **pelo nome** no `localStorage`:
+  se o cliente/o APK reiniciar, ou se o alvo relogar com outro id, o Olivia reencontra
+  pelo nome e retoma sozinho (`seguir_retomado`/`seguir_reconectado`). Só **Parar**
+  (ou iniciar uma rota/reset) esquece o alvo.
   **Distância 0 sobe no mesmo tile**: o `ir` do servidor não entra no piso ocupado por outro
   jogador, então o último sqm é feito com `{t:"dir"}` (o mesmo passo do joystick), um passo
   curto de cada vez, soltando com `parar` antes do tile seguinte. Testado ao vivo: o
@@ -176,7 +179,7 @@ driver/src/                   motor JS
   ponte.js                    único arquivo que conhece Red/J/Hud/EresBot
   tarefas.js                  repetição de task + confirmação no HUD
   painel.js                   painel DOM (modo userscript)
-driver/tests/                 146 testes (node --test)
+driver/tests/                 147 testes (node --test)
 dist/olivia-web.user.js       userscript gerado (única versão suportada)
 tools/build.mjs               monta dist/olivia-web.user.js
 tools/apk.ps1                 compila/assina o APK (aapt2 + javac + d8 + zipalign + apksigner)
@@ -191,7 +194,7 @@ docs/PLANO-E-ESFORCO.md       arquitetura, fases e riscos
 
 ```powershell
 node tools\build.mjs                     # gera dist/olivia-web.user.js
-node --test driver\tests                 # 146 testes
+node --test driver\tests                 # 147 testes
 powershell -ExecutionPolicy Bypass -File tools\apk.ps1
 ```
 

@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.14
-**Data:** 2026-11-27
-**Commit:** release v0.9.14
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.14
+**Versão:** 0.9.15
+**Data:** 2026-11-28
+**Commit:** local (não publicado)
+**Release:** pendente da 0.9.15
 **APK:** `android/app/build/olivia-web.apk` (149 KB)
 
 ## Validado
 
-- **146 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **147 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -25,6 +25,20 @@
    uma vez (`seguir_alvo_fora`), continua em espera e retoma quando o alvo reaparece.
    Só `Olivia.parar()` encerra.
 2. Minimizar/restaurar preserva o alvo; retomar reinicia o relógio de perda.
+
+## Mudanças da 0.9.15 (seguir sobrevive a relog)
+
+1. **Alvo salvo pelo nome**: ao iniciar o seguir, o driver guarda
+   `{nome, id, sqm, onda}` em `ovw.seguirAlvo`.
+2. **Retomada automática**: ao reiniciar o APK/WebView, ou quando o alvo reloga com
+   outro id, o driver procura pelo nome entre os jogadores visíveis e retoma
+   (`seguir_retomado` ou `seguir_reconectado`).
+3. **Alvo fora de vista**: espera e tenta de novo a cada 1 s; não perde o alvo salvo.
+4. **Parar explícito esquece**: o **Parar** do painel nativo, o **Parar** do painel da
+   página, o **Reset Contador** e o início de uma rota removem `ovw.seguirAlvo`.
+5. **Prioridade**: rota ativa não é sobrescrita; ao iniciar/retomar uma rota, o alvo do
+   seguir é esquecido.
+6. O painel mostra o **nome** do alvo quando disponível, não só o id.
 
 ## Mudanças da 0.9.14 (re-target sem loop)
 

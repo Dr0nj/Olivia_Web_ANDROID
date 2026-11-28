@@ -178,11 +178,15 @@ export function criarMotor(opcoes) {
     ultimoGiro = 0;
     pausaInterface = false;
     limparDesvio();
-    registro.evento("seguir_inicio", {
+    const evento = o.evento || (o.retomada ? "seguir_retomado" : "seguir_inicio");
+    const dadosEvento = {
       alvo: seguindoId,
       sqm: seguidor.alcanceEfetivo(),
       onda: seguidor.onda(),
-    });
+    };
+    if (o.nome) dadosEvento.alvoNome = o.nome;
+    if (o.de) dadosEvento.de = o.de;
+    registro.evento(evento, dadosEvento);
     return true;
   }
 

@@ -1,9 +1,9 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.18
+**Versão:** 0.9.19
 **Data:** 2026-11-28
-**Commit:** release v0.9.18
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.18
+**Commit:** release v0.9.19
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.19
 **APK:** `android/app/build/olivia-web.apk` (153 KB)
 
 ## Validado
@@ -18,6 +18,15 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.19 (tempo para upar no XP/h)
+
+1. No cartão **XP / HORA**, abaixo do número grande, aparece o tempo estimado para upar
+   na média da sessão: `média · ~2 h 15 min para upar`.
+2. Usa o XP que falta para o próximo nível (`expSig - exp`) e a média de XP/h da sessão.
+3. Sem XP/h ou no nível máximo, continua mostrando só `média da sessão`.
+4. Mesmo formato do `SessionPanel` do desktop: `~X s`, `~X min`, `~X h Y min`, `~X d Y h`.
+5. A suíte JS continua em **155 testes**; a mudança é só no painel nativo (`Painel.java`).
 
 ## Mudanças da 0.9.18 (suprimentos contam a mochila de store)
 

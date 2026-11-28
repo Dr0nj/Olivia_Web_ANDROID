@@ -1405,7 +1405,11 @@ class Painel {
 
             long xpHora = sessao != null ? sessao.optLong("xpHora", 0) : 0;
             xpValor.setText(numero(xpHora));
-            xpDetalhe.setText("média da sessão");
+            long xpNivel = jogo != null ? jogo.optLong("xpNivel", -1) : -1;
+            long xpProximo = jogo != null ? jogo.optLong("xpProximo", -1) : -1;
+            String etaNivel = tempoParaUpar(
+                    xpNivel < 0 || xpProximo <= xpNivel ? -1 : xpProximo - xpNivel, xpHora);
+            xpDetalhe.setText(etaNivel.isEmpty() ? "média da sessão" : "média · " + etaNivel);
             long xpSessao = sessao != null ? sessao.optLong("xp", 0) : 0;
             xpSessaoValor.setText(numero(xpSessao));
             xpSessaoDetalhe.setText("XP ganho");
@@ -1918,6 +1922,18 @@ class Painel {
             return m == 0 ? "~" + h + "h" : "~" + h + "h " + m;
         }
         return "~" + Math.max(1, total) + "min";
+    }
+
+    /** Tempo até upar na média de XP/h (mesmo texto do SessionPanel do desktop). */
+    private static String tempoParaUpar(long restante, long xpHora) {
+        if (restante <= 0 || xpHora <= 0) return "";
+        long segundos = (long) Math.ceil(restante / (double) xpHora * 3600);
+        if (segundos < 60) return "~" + segundos + " s para upar";
+        long minutos = (segundos + 59) / 60;
+        if (minutos < 60) return "~" + minutos + " min para upar";
+        long horas = minutos / 60;
+        if (horas >= 24) return "~" + (horas / 24) + " d " + (horas % 24) + " h para upar";
+        return "~" + horas + " h " + (minutos % 60) + " min para upar";
     }
 
     private String valorSuprimento(JSONObject sup) {

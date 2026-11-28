@@ -452,7 +452,7 @@ import { criarTarefas } from "./tarefas.js";
     }
   }
 
-  // A cada 700 ms reavalia o alvo com o círculo de raio 2,5 (diâmetro 5) e a
+  // A cada 600 ms reavalia o alvo com o círculo de raio 2,5 (diâmetro 5) e a
   // histerese do desktop: +2 monstros para trocar e 3 s segurando o escolhido.
   function passoArea() {
     if (!areaLigada || suspenso || document.hidden === true || !ponte.pronto()) return;
@@ -708,7 +708,7 @@ import { criarTarefas } from "./tarefas.js";
   }, 3000);
 
   setInterval(vigiarConexao, 5000);
-  setInterval(passoArea, 700);
+  setInterval(passoArea, 600);
   setInterval(passoRetarget, 700);
   setInterval(tentarRetomarSeguir, 1000);
   // Confirmação/expiração das repetições de task (prazo de 5 s).

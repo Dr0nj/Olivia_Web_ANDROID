@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.15
+**Versão:** 0.9.16
 **Data:** 2026-11-28
-**Commit:** release v0.9.15
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.15
-**APK:** `android/app/build/olivia-web.apk` (149 KB)
+**Commit:** release v0.9.16
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.16
+**APK:** `android/app/build/olivia-web.apk` (153 KB)
 
 ## Validado
 
-- **147 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **151 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -18,6 +18,21 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.16 (área igual ao desktop)
+
+1. **Empate pelo mais central**: `spread` (soma das distâncias até os monstros cobertos)
+   desempata antes da distância e do id, como no `AreaAttack` do desktop.
+2. **+1 quando pega todos**: se o alvo atual deixa alguém da janela 7×5 de fora e outro
+   alvo pega todos, troca com +1 (antes exigia +2 sempre).
+3. **"Pega todos" fura a trava de 3 s**: a troca que fecha a janela inteira não espera o
+   hold; a troca comum (+2) continua esperando.
+4. **Alvo atual desconhecido espera** (o id sumiu da lista) em vez de trocar na hora.
+5. **Reavaliação a cada 600 ms** (era 700 ms), igual ao desktop.
+
+Sem alvo atual (`null`) a Olivia escolhe o primeiro na hora: no mobile o auto-alvo do
+Hunt Assist fica desligado (`cerca=false`), então ela é quem escolhe. Teste ao vivo com
+monstros reais ainda pendente.
 
 ## Mudanças da 0.9.13 (follow fora de alcance)
 
@@ -139,8 +154,11 @@
 1. **Seguir 0**: `ir` não entra no piso ocupado por outro jogador; o último sqm usa
    `{t:"dir"}` (passo do joystick), com `parar` em 240 ms e novo passo a cada 650 ms.
 2. **Área**: `driver/src/area.js` porta o `AreaAttack` do desktop (raio 2,5 = diâmetro 5;
-   janela 7×5; +2 monstros; 3 s). Alvo via `Pelea.poner`/`{t:"objetivo"}`; Hunt Assist
-   com `cerca=false`; skills/poções preservadas.
+   janela 7×5; +2 monstros; 3 s). Alinhado ao desktop 27/11: empate pelo mais **central**
+   (`spread`), **+1 quando pega todos** da janela (e fura o hold), alvo atual desconhecido
+   espera. Sem alvo atual a Olivia escolhe o primeiro (o auto-alvo do jogo fica desligado).
+   Alvo via `Pelea.poner`/`{t:"objetivo"}`; Hunt Assist com `cerca=false`; skills/poções
+   preservadas. Reavalia a cada 600 ms, como o desktop.
 3. **Configurações**: `ScrollView` com altura limitada; o novo checkbox de área fez o
    Voltar sair da tela e isso foi corrigido.
 

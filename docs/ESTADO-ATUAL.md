@@ -1,9 +1,9 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.19
+**Versão:** 0.9.20
 **Data:** 2026-11-28
-**Commit:** release v0.9.19
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.19
+**Commit:** release v0.9.20
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.20
 **APK:** `android/app/build/olivia-web.apk` (153 KB)
 
 ## Validado
@@ -18,6 +18,19 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.20 (visão geral simétrica)
+
+1. **Tempo de sessão** virou card grande no topo, ao lado do Level.
+2. **Level** virou card estreito, com a estimativa `~XhYY p/ upar` embaixo.
+3. **Sem duplicidade**: a linha do status não mostra mais `Level N` nem
+   `volta N · tempo`; o tempo está no card e as voltas no card VOLTAS.
+4. **Colunas com pesos**: 5 cards largos à esquerda (tempo de sessão, XP/h,
+   XP da sessão, gold, suprimentos) e 5 estreitos à direita (level, tasks,
+   anti-bot, voltas, stamina).
+5. O corpo continua rolável; `pausa`/`menu aberto` aparecem na linha do status
+   quando existem.
+6. **155 testes**; a mudança é só no painel nativo (`Painel.java`).
 
 ## Mudanças da 0.9.19 (tempo para upar no XP/h)
 

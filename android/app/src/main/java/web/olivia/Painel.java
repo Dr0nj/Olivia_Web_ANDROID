@@ -89,6 +89,10 @@ class Painel {
     private final TextView statusValor;
     private final TextView statusLinha1;
     private final TextView statusLinha2;
+    private final TextView tempoValor;
+    private final TextView tempoDetalhe;
+    private final TextView levelValor;
+    private final TextView levelDetalhe;
     private final TextView xpValor;
     private final TextView xpDetalhe;
     private final TextView xpSessaoValor;
@@ -262,42 +266,50 @@ class Painel {
         botoes.addView(botaoHub("Parar", v -> acoes.parar()));
         telaHub.addView(botoes);
 
+        tempoValor = texto("—", 15.5f, suave, true);
+        tempoDetalhe = texto("desde o início", 8.2f, suave, false);
+        levelValor = texto("—", 15.5f, ciano, true);
+        levelDetalhe = texto(" ", 8.2f, suave, false);
+        telaHub.addView(linhaCartoes(
+                cartao("TEMPO DE SESSÃO", tempoValor, tempoDetalhe, suave),
+                cartao("LEVEL", levelValor, levelDetalhe, ciano), 1.55f, 1f));
+
         xpValor = texto("—", 15.5f, ciano, true);
         xpDetalhe = texto(" ", 8.2f, suave, false);
-        xpSessaoValor = texto("—", 15.5f, ciano, true);
-        xpSessaoDetalhe = texto(" ", 8.2f, suave, false);
+        taskValor = texto("—", 15.5f, roxo, true);
+        taskDetalhe = texto(" ", 8.2f, suave, false);
         telaHub.addView(linhaCartoes(
                 cartao("XP / HORA", xpValor, xpDetalhe, ciano),
-                cartao("XP DA SESSÃO", xpSessaoValor, xpSessaoDetalhe, ciano)));
+                cartao("TASKS", taskValor, taskDetalhe, roxo), 1.55f, 1f));
+
+        xpSessaoValor = texto("—", 15.5f, ciano, true);
+        xpSessaoDetalhe = texto(" ", 8.2f, suave, false);
+        antiValor = texto("—", 15.5f, ciano, true);
+        antiDetalhe = texto(" ", 8.2f, suave, false);
+        telaHub.addView(linhaCartoes(
+                cartao("XP DA SESSÃO", xpSessaoValor, xpSessaoDetalhe, ciano),
+                cartao("ANTI-BOT", antiValor, antiDetalhe, ciano), 1.55f, 1f));
 
         goldValor = texto("—", 15.5f, verde, true);
         goldDetalhe = texto(" ", 8.2f, suave, false);
+        voltaValor = texto("—", 15.5f, verde, true);
+        voltaDetalhe = texto(" ", 8.2f, suave, false);
+        telaHub.addView(linhaCartoes(
+                cartao("GOLD COLETADO", goldValor, goldDetalhe, verde),
+                cartao("VOLTAS", voltaValor, voltaDetalhe, verde), 1.55f, 1f));
+
         supValor = texto("—", 15.5f, amarelo, true);
         supDetalhe = texto(" ", 8.2f, suave, false);
+        staminaValor = texto("—", 15.5f, suave, true);
+        staminaDetalhe = texto(" ", 8.2f, suave, false);
         LinearLayout cardSup = cartao("SUPRIMENTOS ›", supValor, supDetalhe, amarelo);
         supDetalhe.setVisibility(View.GONE);
         cardSup.setClickable(true);
         cardSup.setFocusable(true);
         cardSup.setOnClickListener(v -> abrirTelaSuprimentos());
         telaHub.addView(linhaCartoes(
-                cartao("GOLD COLETADO", goldValor, goldDetalhe, verde),
-                cardSup));
-
-        taskValor = texto("—", 15.5f, roxo, true);
-        taskDetalhe = texto(" ", 8.2f, suave, false);
-        antiValor = texto("—", 15.5f, ciano, true);
-        antiDetalhe = texto(" ", 8.2f, suave, false);
-        telaHub.addView(linhaCartoes(
-                cartao("TASKS", taskValor, taskDetalhe, roxo),
-                cartao("ANTI-BOT", antiValor, antiDetalhe, ciano)));
-
-        staminaValor = texto("—", 15.5f, suave, true);
-        staminaDetalhe = texto(" ", 8.2f, suave, false);
-        voltaValor = texto("—", 15.5f, verde, true);
-        voltaDetalhe = texto(" ", 8.2f, suave, false);
-        telaHub.addView(linhaCartoes(
-                cartao("STAMINA", staminaValor, staminaDetalhe, suave),
-                cartao("VOLTAS", voltaValor, voltaDetalhe, verde)));
+                cardSup,
+                cartao("STAMINA", staminaValor, staminaDetalhe, suave), 1.55f, 1f));
 
         telaRota = montarTelaRota();
         corpo.addView(telaRota);
@@ -1394,14 +1406,16 @@ class Painel {
             if (alvoRota != null) {
                 ponto += " · " + alvoRota.optInt("x", 0) + "," + alvoRota.optInt("y", 0);
             }
-            statusLinha1.setText((nivel > 0 ? "Level " + nivel + " · " : "") + ponto);
+            statusLinha1.setText(ponto);
 
             long duracao = sessao != null ? sessao.optLong("duracaoMs", 0) : 0;
             int voltas = sessao != null ? sessao.optInt("voltas", 0) : voltaRota;
             String pausaTexto = pausaRota > 0
-                    ? " · pausa " + Math.round(pausaRota / 1000.0) + "s"
-                    : pausaUi ? " · menu aberto" : "";
-            statusLinha2.setText("volta " + voltas + " · " + tempo(duracao) + pausaTexto);
+                    ? "pausa " + Math.round(pausaRota / 1000.0) + "s"
+                    : pausaUi ? "menu aberto" : "";
+            statusLinha2.setText(pausaTexto);
+            statusLinha2.setVisibility(pausaTexto.isEmpty() ? View.GONE : View.VISIBLE);
+            tempoValor.setText(tempo(duracao));
 
             long xpHora = sessao != null ? sessao.optLong("xpHora", 0) : 0;
             xpValor.setText(numero(xpHora));
@@ -1409,7 +1423,9 @@ class Painel {
             long xpProximo = jogo != null ? jogo.optLong("xpProximo", -1) : -1;
             String etaNivel = tempoParaUpar(
                     xpNivel < 0 || xpProximo <= xpNivel ? -1 : xpProximo - xpNivel, xpHora);
-            xpDetalhe.setText(etaNivel.isEmpty() ? "média da sessão" : "média · " + etaNivel);
+            levelValor.setText(nivel > 0 ? String.valueOf(nivel) : "—");
+            levelDetalhe.setText(etaNivel.isEmpty() ? (xpHora > 0 ? "—" : "sem XP/h") : etaNivel);
+            xpDetalhe.setText("média da sessão");
             long xpSessao = sessao != null ? sessao.optLong("xp", 0) : 0;
             xpSessaoValor.setText(numero(xpSessao));
             xpSessaoDetalhe.setText("XP ganho");
@@ -1836,13 +1852,14 @@ class Painel {
         return card;
     }
 
-    private LinearLayout linhaCartoes(LinearLayout esquerda, LinearLayout direita) {
+    private LinearLayout linhaCartoes(LinearLayout esquerda, LinearLayout direita,
+                                      float pesoEsquerda, float pesoDireita) {
         LinearLayout linha = linha();
         linha.setPadding(0, d(4), 0, 0);
         linha.setBaselineAligned(false);
-        LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, d(52), 1f);
+        LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, d(52), pesoEsquerda);
         p1.rightMargin = d(3);
-        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, d(52), 1f);
+        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, d(52), pesoDireita);
         p2.leftMargin = d(3);
         linha.addView(esquerda, p1);
         linha.addView(direita, p2);
@@ -1924,16 +1941,17 @@ class Painel {
         return "~" + Math.max(1, total) + "min";
     }
 
-    /** Tempo até upar na média de XP/h (mesmo texto do SessionPanel do desktop). */
+    /** Tempo até upar na média de XP/h, compacto para o card estreito. */
     private static String tempoParaUpar(long restante, long xpHora) {
         if (restante <= 0 || xpHora <= 0) return "";
         long segundos = (long) Math.ceil(restante / (double) xpHora * 3600);
-        if (segundos < 60) return "~" + segundos + " s para upar";
+        if (segundos < 60) return "~" + segundos + "s p/ upar";
         long minutos = (segundos + 59) / 60;
-        if (minutos < 60) return "~" + minutos + " min para upar";
+        if (minutos < 60) return "~" + minutos + "min p/ upar";
         long horas = minutos / 60;
-        if (horas >= 24) return "~" + (horas / 24) + " d " + (horas % 24) + " h para upar";
-        return "~" + horas + " h " + (minutos % 60) + " min para upar";
+        if (horas >= 24) return "~" + (horas / 24) + "d " + (horas % 24) + "h p/ upar";
+        long resto = minutos % 60;
+        return "~" + horas + "h" + (resto == 0 ? "" : resto) + " p/ upar";
     }
 
     private String valorSuprimento(JSONObject sup) {

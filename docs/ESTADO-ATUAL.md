@@ -1,9 +1,9 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.20
+**Versão:** 0.9.21
 **Data:** 2026-11-28
-**Commit:** release v0.9.20
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.20
+**Commit:** release v0.9.21
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.21
 **APK:** `android/app/build/olivia-web.apk` (153 KB)
 
 ## Validado
@@ -18,6 +18,18 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.21 (Back não fecha o jogo)
+
+1. **Back ignorado**: no Android 33+ um `OnBackInvokedCallback` com `PRIORITY_OVERLAY`
+   consome o Back e não faz nada; o `onBackPressed` legado também ficou vazio.
+2. Antes, o callback do WebView recebia o gesto e chamava `finish()`, destruindo a
+   activity, parando o `OliviaService` e derrubando a sessão (log: `key_back_press`
+   → `wm_finish_activity app-request`).
+3. Um ghost touch/edge-swipe não fecha nem minimiza mais; o jogo e o serviço continuam.
+4. Para minimizar, use **Home/Overview** do Android ou o botão de recolher do painel.
+5. `android:enableOnBackInvokedCallback="true"` no manifesto.
+6. **155 testes**; mudança só no Android (`MainActivity.java`/manifesto).
 
 ## Mudanças da 0.9.20 (visão geral simétrica)
 

@@ -17,6 +17,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.window.OnBackInvokedDispatcher;
 
 import org.json.JSONObject;
 
@@ -44,6 +45,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Back ignorado: em modo predictive back o WebView recebia o gesto e chamava
+        // finish(), derrubando a sessão. O overlay garante que o Back não faça nada.
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_OVERLAY, () -> { /* Back ignorado */ });
+        }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         driver = Utilidades.lerAsset(this, "driver.js");
@@ -313,8 +320,7 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // Voltar dentro do jogo fecharia o personagem (e a sessão). Minimiza o app.
-        moveTaskToBack(true);
+        // Back ignorado de propósito: um ghost touch/gesto não pode fechar nem minimizar o jogo.
     }
 
     @Override

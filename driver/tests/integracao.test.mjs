@@ -532,6 +532,31 @@ test("conta poções de vida e mana do inventário", () => {
   assert.equal(estado.suprimentos.itens, 545);
 });
 
+test("conta mochila de store e munição equipada, como o desktop", () => {
+  const { janela } = cenario({
+    inv: {
+      mochila: [{ objeto: 4101, nombre: "Small Mana Potion", cant: 600 }],
+      botin: [],
+      buzon: [
+        { objeto: 4102, nombre: "Mana Potion", cant: 6200 },
+        { objeto: 4302, nombre: "Arrow", cant: 300 },
+      ],
+      municion: { objeto: 4301, nombre: "Arrow", cant: 100 },
+      oro: 0,
+    },
+  });
+
+  const estado = janela.Olivia.estado();
+  assert.equal(estado.suprimentos.mana, 600 + 6200, "store entra no total de mana");
+  assert.equal(estado.suprimentos.itens, 600 + 6200 + 300 + 100, "store e munição entram no total");
+  const mana = estado.suprimentos.detalhes.find((i) => i.id === 4102);
+  assert.ok(mana, "poção da mochila de store aparece no detalhe");
+  assert.equal(mana.quantidade, 6200);
+  const flecha = estado.suprimentos.lista.find((i) => i.id === 4301);
+  assert.ok(flecha, "munição equipada entra na lista");
+  assert.equal(flecha.quantidade, 100);
+});
+
 test("retarget_config só registra quando a configuração muda de verdade", () => {
   const { janela } = cenario();
   const contar = () => janela.Olivia.log.todos()

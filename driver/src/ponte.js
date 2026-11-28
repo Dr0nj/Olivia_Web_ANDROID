@@ -271,6 +271,10 @@ export function criarPonteNavegador() {
     return {
       mochila: somar(inv.mochila),
       botin: somar(inv.botin),
+      // Como o SupplyProbe do desktop: mochila de store e munição equipada também
+      // contam. Banco/depósito (deposito) continua de fora, igual ao desktop.
+      store: somar(inv.buzon),
+      municion: somar(inv.municion && inv.municion.objeto != null ? [inv.municion] : []),
       oro: Number(inv.oro) || 0,
     };
   }
@@ -288,7 +292,11 @@ export function criarPonteNavegador() {
 
     const mochila = Array.isArray(inv.mochila) ? inv.mochila : [];
     const botin = Array.isArray(inv.botin) ? inv.botin : [];
-    mochila.concat(botin).forEach(function (o) {
+    // "Mochila de store" (buzon) e a munição equipada (municion) contam também,
+    // como os slots equipados do SupplyProbe no desktop. Banco/depósito fica fora.
+    const store = Array.isArray(inv.buzon) ? inv.buzon : [];
+    const municao = inv.municion && inv.municion.objeto != null ? [inv.municion] : [];
+    mochila.concat(botin, store, municao).forEach(function (o) {
       if (!o) return;
       const qtd = Number(o.cant) || 0;
       itens += qtd;

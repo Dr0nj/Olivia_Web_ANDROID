@@ -1,14 +1,14 @@
 # Estado atual — Olivia Web Android
 
-**Versão:** 0.9.17
+**Versão:** 0.9.18
 **Data:** 2026-11-28
-**Commit:** release v0.9.17
-**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.17
+**Commit:** release v0.9.18
+**Release:** https://github.com/Dr0nj/Olivia_Web_ANDROID/releases/tag/v0.9.18
 **APK:** `android/app/build/olivia-web.apk` (153 KB)
 
 ## Validado
 
-- **154 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
+- **155 testes** (`node --test driver/tests`) e auditoria `Calidad` sem violações.
 - **Seguir 0 = mesmo tile**: validado ao vivo no emulador; de `(90,105)` para `(85,105)`,
   o tile exato do alvo. `q=16`.
 - **Área**: checkbox liga/desliga; Hunt Assist fica `{on:true,cerca:false,modo:2}`;
@@ -18,6 +18,17 @@
 - **Repetir task**: envio do pacote oficial, fechamento do `#aviso-tarea` e contagem só
   depois da confirmação no `Hud.listaTareas`; handler reassinado após o `DOMContentLoaded`.
 - APK 0.9.6 gerado e assinado; **falta o teste ao vivo no emulador/celular**.
+
+## Mudanças da 0.9.18 (suprimentos contam a mochila de store)
+
+1. **Mochila de store (`Hud.inv.buzon`)** entra na conta junto com mochila e loot.
+2. **Munição equipada (`Hud.inv.municion`)** entra como item, igual aos slots
+   equipados do `SupplyProbe` do desktop.
+3. **Banco/depósito (`Hud.inv.deposito`) continua de fora**, como no desktop.
+4. O **total de itens** passa a somar store + munição.
+5. Compras grandes (>20) continuam zerando a medição daquele item: a quantidade
+   aparece cheia, mas o status fica “coletando dados” até gastar.
+6. **155 testes** no total; o novo cobre store + munição equipada.
 
 ## Mudanças da 0.9.17 (checkboxes sem piscar)
 
